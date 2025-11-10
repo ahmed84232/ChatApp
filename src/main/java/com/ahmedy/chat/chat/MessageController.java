@@ -7,13 +7,9 @@ import org.springframework.stereotype.Controller;
 @Controller
 public class MessageController {
 
-    @MessageMapping("/message") // client sends to /app/message
-    @SendTo("/topic/messages")  // response is broadcast to /topic/messages
+    @MessageMapping("/message")
+    @SendTo("/topic/messages")
     public String handleMessage(String message) {
         return "Echo: " + message;
     }
-
-
-
-
 }
