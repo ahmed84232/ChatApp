@@ -1,7 +1,6 @@
 package com.ahmedy.chat.chat;
 
 import com.ahmedy.chat.dto.*;
-import com.ahmedy.chat.entity.Conversation;
 import com.ahmedy.chat.entity.User;
 import com.ahmedy.chat.service.ConversationService;
 import com.ahmedy.chat.service.MessageService;
@@ -66,7 +65,13 @@ public class ChatController {
     }
 
     @PostMapping("/users")
-    public ResponseEntity<User> addUser(@RequestBody UserDto request) {
+    public ResponseEntity<UserDto> addUser(@RequestBody UserDto request) {
         return ResponseEntity.ok(userService.addUser(request));
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<UserDto> login(@RequestBody UserDto request) {
+
+        return ResponseEntity.ok(userService.findUserByUsername(request.getUsername()));
     }
 }

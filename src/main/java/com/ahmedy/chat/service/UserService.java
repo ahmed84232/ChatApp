@@ -18,7 +18,7 @@ public class UserService {
         this.userDao = userDao;
     }
 
-    public UserDto getUser(UUID id) {
+    public UserDto findUserById(UUID id) {
         User user = userDao.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
@@ -30,10 +30,30 @@ public class UserService {
         return response;
     }
 
-    public User addUser(UserDto req) {
+    public UserDto findUserByUsername(String username) {
+
+        User user = userDao.findUserByUsername(username)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        UserDto response = new UserDto();
+        response.setId(user.getId().toString());
+        response.setUsername(user.getUsername());
+        response.setCreatedAt(user.getCreatedAt());
+
+        return response;
+    }
+
+    public UserDto addUser(UserDto req) {
         User user = new User();
         user.setUsername(req.getUsername());
+        User savedUser = userDao.saveAndFlush(user);
 
-        return userDao.save(user);
+        UserDto response = new UserDto();
+
+        response.setId(savedUser.getId().toString());
+        response.setUsername(savedUser.getUsername());
+        response.setCreatedAt(savedUser.getCreatedAt());
+
+        return response;
     }
 }
