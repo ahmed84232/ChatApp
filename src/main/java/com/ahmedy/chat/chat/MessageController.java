@@ -5,10 +5,12 @@ import com.ahmedy.chat.dto.MessageDto;
 import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.service.ConversationService;
 import com.ahmedy.chat.service.MessageService;
+import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.List;
 import java.util.UUID;
@@ -27,24 +29,24 @@ public class MessageController {
         this.conversationService = conversationService;
     }
 
-    @MessageMapping("/chat.sendMessage")
-    public void sendMessage(MessageDto messageRequest) {
-
-        MessageDto response = messageService.saveMessage(messageRequest);
+    @MessageMapping("/sendMessage/{conversationId}")
+    public void sendMessage(MessageDto messageRequestDto, @DestinationVariable String conversationId) {
+        messageRequestDto.setConversationId(conversationId);
+        MessageDto response = messageService.saveMessage(messageRequestDto);
 
         List<UserDto> users = conversationService
-                .getConversation(UUID.fromString(messageRequest.getConversationId()))
+                .getConversation(UUID.fromString(conversationId))
                 .getUsers();
 
         String recipientId = users.stream()
                 .map(UserDto::getId)
-                .filter(id -> !id.equals(messageRequest.getSenderId()))
+                .filter(id -> !id.equals(messageRequestDto.getSenderId()))
                 .findFirst()
                 .orElse(null);
 
         // Broadcast to /topic/user/{id}
         messagingTemplate.convertAndSend("/topic/user/" + recipientId, response);
-        messagingTemplate.convertAndSend("/topic/user/" + messageRequest.getSenderId(), response);
+        messagingTemplate.convertAndSend("/topic/user/" + messageRequestDto.getSenderId(), response);
 
         // Assume DM chat
         // User 1 send a message to conversation x

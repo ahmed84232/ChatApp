@@ -45,7 +45,6 @@ public class ConversationService {
         List<UserDto> users = new ArrayList<>();
         users.add(UserDto.toDto(creator));
 
-        // Handle 1-to-1 conversation check
         if (req.getParticipantIds().size() == 1) {
             UUID otherUserId = UUID.fromString(req.getParticipantIds().getFirst());
             User otherUser = userDao.findById(otherUserId)
@@ -64,18 +63,20 @@ public class ConversationService {
             }
         }
 
-        // If no existing conversation found, create new one
         Conversation conv = new Conversation();
         conv.setName(req.getName());
+
+        if (req.getParticipantIds().size() <= 2) {
+            conv.setGroupChat(true);
+        }
+
         Conversation savedConversation = conversationDao.save(conv);
 
-        // Add creator
         ConversationParticipant cp = new ConversationParticipant();
         cp.setConversation(savedConversation);
         cp.setUser(creator);
         conversationParticipantDao.saveAndFlush(cp);
 
-        // Add other participants
         for (String id : req.getParticipantIds()) {
             User u = userDao.findById(UUID.fromString(id))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
@@ -91,10 +92,9 @@ public class ConversationService {
         ConversationDto response = ConversationDto.toDto(savedConversation);
         response.setUsers(users);
 
-        // Broadcast to participants
-        response.getUsers().forEach(user ->
-                messagingTemplate.convertAndSend("/topic/conversations/" + user.getId(), response)
-        );
+//        response.getUsers().forEach(user ->
+//                messagingTemplate.convertAndSend("/topic/conversations/" + user.getId(), response)
+//        );
 
         return response;
     }
@@ -117,7 +117,6 @@ public class ConversationService {
         User user = userDao.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        // Prevent duplicates
         if (conversationParticipantDao.existsByConversationIdAndUserId(conversationId, userId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "User already has conversation with id " + conversationId);
         }
@@ -131,10 +130,15 @@ public class ConversationService {
 
     public List<ConversationDto> getConversations(UUID userId) {
 
-        List<ConversationParticipant> participants = conversationParticipantDao.findAllByUserId(userId);
+        List<ConversationParticipant> participants = null;
+        try {
+            participants = conversationParticipantDao.findAllByUserId(userId);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
 
         if (participants.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+            throw new ResponseStatusException(HttpStatus.NO_CONTENT, "User has no conversations yet!");
         }
 
         return participants
