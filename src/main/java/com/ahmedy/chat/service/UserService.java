@@ -5,8 +5,10 @@ import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.entity.User;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -18,6 +20,7 @@ public class UserService {
         this.userDao = userDao;
     }
 
+    @Transactional
     public UserDto findUserById(UUID id) {
         User user = userDao.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
@@ -30,6 +33,7 @@ public class UserService {
         return response;
     }
 
+    @Transactional
     public UserDto findUserByUsername(String username) {
 
         User user = userDao.findUserByUsername(username)
@@ -43,7 +47,14 @@ public class UserService {
         return response;
     }
 
+    @Transactional
     public UserDto addUser(UserDto req) {
+
+        Optional<User> exUser = userDao.findUserByUsername(req.getUsername());
+        if (exUser.isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already exists");
+        }
+
         User user = new User();
         user.setUsername(req.getUsername());
         User savedUser = userDao.saveAndFlush(user);

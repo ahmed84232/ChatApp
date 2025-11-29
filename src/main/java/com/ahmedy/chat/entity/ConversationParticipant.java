@@ -2,7 +2,9 @@ package com.ahmedy.chat.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.ToString;
 import org.hibernate.annotations.CreationTimestamp;
+
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -20,10 +22,12 @@ public class ConversationParticipant {
 
     @ManyToOne
     @JoinColumn(name = "conversation_id")
+    @ToString.Exclude
     private Conversation conversation;
 
     @ManyToOne
     @JoinColumn(name = "user_id")
+    @ToString.Exclude
     private User user;
 
     @CreationTimestamp

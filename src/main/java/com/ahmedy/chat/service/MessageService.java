@@ -4,6 +4,7 @@ import com.ahmedy.chat.dao.ConversationDao;
 import com.ahmedy.chat.dao.ConversationParticipantDao;
 import com.ahmedy.chat.dao.MessageDao;
 import com.ahmedy.chat.dao.UserDao;
+import com.ahmedy.chat.dto.ConversationDto;
 import com.ahmedy.chat.dto.MessageDto;
 import com.ahmedy.chat.entity.Conversation;
 import com.ahmedy.chat.entity.ConversationParticipant;
@@ -37,13 +38,13 @@ public class MessageService {
     }
 
     @Transactional
-    public MessageDto saveMessage(UUID senderId, MessageDto req) {
+    public MessageDto saveMessage(MessageDto req) {
 
         Conversation conversation = conversationDao.findById(
                         UUID.fromString(req.getConversationId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
 
-        User sender = userDao.findById(senderId)
+        User sender = userDao.findById(UUID.fromString(req.getSenderId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         List<User> users = conversation.getParticipants().stream().map(ConversationParticipant::getUser).toList();
@@ -62,9 +63,10 @@ public class MessageService {
 
         MessageDto response = new MessageDto();
         response.setId(savedMessage.getId());
-        response.setMessageText(req.getMessageText());
-        response.setConversationId(req.getConversationId());
-        response.setSenderId(senderId.toString());
+        response.setMessageText(savedMessage.getMessageText());
+        response.setConversationId(savedMessage.getConversation().getId().toString());
+        response.setSenderId(savedMessage.getSender().getId().toString());
+        response.setSenderName(savedMessage.getSender().getUsername());
         response.setSentAt(savedMessage.getSentAt());
 
         return response;
@@ -81,7 +83,8 @@ public class MessageService {
             response.setMessageText(message.getMessageText());
             response.setSentAt(message.getSentAt());
             response.setConversationId(message.getConversation().getId().toString());
-            response.setSenderId(message.getSender().getUsername());
+            response.setSenderId(message.getSender().getId().toString());
+            response.setSenderName(message.getSender().getUsername());
             return response;
         }
         ).toList();

@@ -5,6 +5,7 @@ import com.ahmedy.chat.entity.User;
 import com.ahmedy.chat.service.ConversationService;
 import com.ahmedy.chat.service.MessageService;
 import com.ahmedy.chat.service.UserService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,10 +27,35 @@ public class ChatController {
         this.userService = userService;
     }
 
+    @GetMapping("/conversations/{conversationId}")
+    public ResponseEntity<ConversationDto> getConversation(@PathVariable UUID conversationId) {
+        return ResponseEntity.ok(conversationService.getConversation(conversationId));
+    }
+
+    @GetMapping("/conversations/{conversationId}/messages")
+    public ResponseEntity<List<MessageDto>> getMessages(
+            @PathVariable UUID conversationId
+    ) {
+        List<MessageDto> messages = messageService.getMessages(conversationId);
+        return ResponseEntity.ok(messages);
+    }
+
+    @GetMapping("/conversations/user/{userid}")
+    public ResponseEntity<List<ConversationDto>> getConversations(@PathVariable UUID userid) {
+        return ResponseEntity.ok(conversationService.getConversations(userid));
+
+    }
+
+    @PostMapping("/messages")
+    public ResponseEntity<MessageDto> sendMessage(@RequestBody MessageDto request) {
+        MessageDto saved = messageService.saveMessage(request);
+        return ResponseEntity.ok(saved);
+    }
+
     @PostMapping("/conversations")
     public ResponseEntity<ConversationDto> createConversation(
             @RequestBody ConversationDto request,
-            @RequestParam UUID creatorId  // temporary, Keycloak later
+            @RequestParam UUID creatorId
     ) {
         ConversationDto created = conversationService.createConversation(request, creatorId);
         return ResponseEntity.ok(created);
@@ -47,23 +73,6 @@ public class ChatController {
         return ResponseEntity.ok("Participant added");
     }
 
-    @PostMapping("/messages")
-    public ResponseEntity<MessageDto> sendMessage(
-            @RequestBody MessageDto request,
-            @RequestParam UUID senderId   // temporary, Keycloak later
-    ) {
-        MessageDto saved = messageService.saveMessage(senderId, request);
-        return ResponseEntity.ok(saved);
-    }
-
-    @GetMapping("/conversations/{conversationId}/messages")
-    public ResponseEntity<List<MessageDto>> getMessages(
-            @PathVariable UUID conversationId
-    ) {
-        List<MessageDto> messages = messageService.getMessages(conversationId);
-        return ResponseEntity.ok(messages);
-    }
-
     @PostMapping("/users")
     public ResponseEntity<UserDto> addUser(@RequestBody UserDto request) {
         return ResponseEntity.ok(userService.addUser(request));
@@ -74,4 +83,11 @@ public class ChatController {
 
         return ResponseEntity.ok(userService.findUserByUsername(request.getUsername()));
     }
+
+    @GetMapping("/users/{username}")
+    public ResponseEntity<UserDto> getUser(@PathVariable String username) {
+        return ResponseEntity.ok(userService.findUserByUsername(username));
+    }
+
+
 }

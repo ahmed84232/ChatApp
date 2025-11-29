@@ -1,13 +1,13 @@
 package com.ahmedy.chat.entity;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.ToString;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -22,6 +22,10 @@ public class User {
 
     @Column(name = "username", nullable = false, unique = true)
     private String username;
+
+    @OneToMany(mappedBy = "user")
+    @ToString.Exclude
+    private List<ConversationParticipant> participant;
 
     @CreationTimestamp
     @Column(name = "created_at")

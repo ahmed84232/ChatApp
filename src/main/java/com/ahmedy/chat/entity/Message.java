@@ -2,8 +2,8 @@ package com.ahmedy.chat.entity;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.ToString;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.Type;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -19,10 +19,12 @@ public class Message {
 
     @ManyToOne
     @JoinColumn(name = "conversation_id")
+    @ToString.Exclude
     private Conversation conversation;
 
     @ManyToOne
     @JoinColumn(name = "sender_id")
+    @ToString.Exclude
     private User sender;
 
     @Column(name = "message_text", nullable = false)

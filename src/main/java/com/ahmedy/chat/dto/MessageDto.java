@@ -14,6 +14,9 @@ public class MessageDto {
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private UUID id;
 
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String senderName;
+
     private String conversationId;
     private String senderId;
     private String messageText;

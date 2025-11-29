@@ -4,34 +4,36 @@ import com.ahmedy.chat.dao.ConversationDao;
 import com.ahmedy.chat.dao.ConversationParticipantDao;
 import com.ahmedy.chat.dao.UserDao;
 import com.ahmedy.chat.dto.ConversationDto;
+import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.entity.Conversation;
 import com.ahmedy.chat.entity.ConversationParticipant;
 import com.ahmedy.chat.entity.User;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 public class ConversationService {
 
     private final ConversationDao conversationDao;
     private final ConversationParticipantDao conversationParticipantDao;
-    private final UserService userService;
     private final UserDao userDao;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public ConversationService(
             ConversationDao conversationDao,
             ConversationParticipantDao conversationParticipantDao,
-            UserService userService,
-            UserDao userDao) {
+            UserDao userDao, SimpMessagingTemplate messagingTemplate) {
         this.conversationDao = conversationDao;
         this.conversationParticipantDao = conversationParticipantDao;
-        this.userService = userService;
         this.userDao = userDao;
+        this.messagingTemplate = messagingTemplate;
     }
 
     @Transactional
@@ -40,14 +42,36 @@ public class ConversationService {
         User creator = userDao.findById(creatorId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        // Create conversation
+        List<UserDto> users = new ArrayList<>();
+        users.add(UserDto.toDto(creator));
+
+        // Handle 1-to-1 conversation check
+        if (req.getParticipantIds().size() == 1) {
+            UUID otherUserId = UUID.fromString(req.getParticipantIds().getFirst());
+            User otherUser = userDao.findById(otherUserId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+            List<Conversation> commonConversations = conversationParticipantDao
+                    .findAllByUserId(creatorId).stream()
+                    .map(ConversationParticipant::getConversation)
+                    .filter(c -> c.getParticipants().size() == 2)
+                    .filter(c -> c.getParticipants().stream()
+                            .anyMatch(p -> p.getUser().getId().equals(otherUserId)))
+                    .toList();
+
+            if (!commonConversations.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "This conversation already exists");
+            }
+        }
+
+        // If no existing conversation found, create new one
         Conversation conv = new Conversation();
         conv.setName(req.getName());
-        conversationDao.save(conv);
+        Conversation savedConversation = conversationDao.save(conv);
 
         // Add creator
         ConversationParticipant cp = new ConversationParticipant();
-        cp.setConversation(conv);
+        cp.setConversation(savedConversation);
         cp.setUser(creator);
         conversationParticipantDao.saveAndFlush(cp);
 
@@ -56,25 +80,33 @@ public class ConversationService {
             User u = userDao.findById(UUID.fromString(id))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-            ConversationParticipant part = new ConversationParticipant();
-            part.setConversation(conv);
-            part.setUser(u);
+            ConversationParticipant participant = new ConversationParticipant();
+            participant.setConversation(savedConversation);
+            participant.setUser(u);
+            conversationParticipantDao.saveAndFlush(participant);
 
-            conversationParticipantDao.saveAndFlush(part);
+            users.add(UserDto.toDto(u));
         }
 
-        ConversationDto response = new ConversationDto();
+        ConversationDto response = ConversationDto.toDto(savedConversation);
+        response.setUsers(users);
 
-        response.setId(conv.getId());
-        response.setName(req.getName());
-        response.setParticipantIds(req.getParticipantIds());
-
-        Conversation savedConv = conversationDao.findById(conv.getId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
-
-        response.setUsers(savedConv.getParticipants().stream().map(ConversationParticipant::getUser).toList());
+        // Broadcast to participants
+        response.getUsers().forEach(user ->
+                messagingTemplate.convertAndSend("/topic/conversations/" + user.getId(), response)
+        );
 
         return response;
+    }
+
+
+
+    @Transactional
+    public ConversationDto getConversation(UUID conversationId) {
+        Conversation conversation = conversationDao.findById(conversationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
+
+        return ConversationDto.toDto(conversation);
     }
 
     @Transactional
@@ -95,5 +127,18 @@ public class ConversationService {
         cp.setUser(user);
 
         conversationParticipantDao.save(cp);
+    }
+
+    public List<ConversationDto> getConversations(UUID userId) {
+
+        List<ConversationParticipant> participants = conversationParticipantDao.findAllByUserId(userId);
+
+        if (participants.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
+        }
+
+        return participants
+                .stream().map(ConversationParticipant::getConversation).toList()
+                .stream().map(ConversationDto::toDto).toList();
     }
 }
