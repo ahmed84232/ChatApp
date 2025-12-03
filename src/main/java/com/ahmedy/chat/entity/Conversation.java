@@ -32,11 +32,18 @@ public class Conversation {
     @UpdateTimestamp
     private LocalDateTime updatedAt;
 
-    @OneToMany(mappedBy = "conversation")
+    @OneToMany(
+            mappedBy = "conversation",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
     @ToString.Exclude
     private List<ConversationParticipant> participants  = new ArrayList<>();
 
-    @OneToMany(mappedBy = "conversation")
+    @OneToMany(
+            mappedBy = "conversation",cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
     @ToString.Exclude
     private List<Message> messages  = new ArrayList<>();
 

@@ -1,5 +1,7 @@
 package com.ahmedy.chat.dto;
 
+import com.ahmedy.chat.entity.Message;
+import com.ahmedy.chat.enums.MessageStatus;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
@@ -22,6 +24,22 @@ public class MessageDto {
     private String messageText;
 
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private Enum<MessageStatus> status;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private LocalDateTime sentAt;
+
+    public static MessageDto toDto(Message message) {
+
+        MessageDto response = new MessageDto();
+        response.setId(message.getId());
+        response.setMessageText(message.getMessageText());
+        response.setSentAt(message.getSentAt());
+        response.setConversationId(message.getConversation().getId().toString());
+        response.setSenderId(message.getSender().getId().toString());
+        response.setSenderName(message.getSender().getUsername());
+        response.setStatus(message.getStatus());
+        return response;
+    }
 
 }

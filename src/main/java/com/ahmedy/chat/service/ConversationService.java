@@ -2,14 +2,15 @@ package com.ahmedy.chat.service;
 
 import com.ahmedy.chat.dao.ConversationDao;
 import com.ahmedy.chat.dao.ConversationParticipantDao;
+import com.ahmedy.chat.dao.MessageDao;
 import com.ahmedy.chat.dao.UserDao;
 import com.ahmedy.chat.dto.ConversationDto;
 import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.entity.Conversation;
 import com.ahmedy.chat.entity.ConversationParticipant;
+import com.ahmedy.chat.entity.Message;
 import com.ahmedy.chat.entity.User;
 import org.springframework.http.HttpStatus;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -24,16 +25,16 @@ public class ConversationService {
     private final ConversationDao conversationDao;
     private final ConversationParticipantDao conversationParticipantDao;
     private final UserDao userDao;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final MessageDao messageDao;
 
     public ConversationService(
             ConversationDao conversationDao,
             ConversationParticipantDao conversationParticipantDao,
-            UserDao userDao, SimpMessagingTemplate messagingTemplate) {
+            UserDao userDao, MessageDao messageDao) {
         this.conversationDao = conversationDao;
         this.conversationParticipantDao = conversationParticipantDao;
         this.userDao = userDao;
-        this.messagingTemplate = messagingTemplate;
+        this.messageDao = messageDao;
     }
 
     @Transactional
@@ -92,10 +93,6 @@ public class ConversationService {
         ConversationDto response = ConversationDto.toDto(savedConversation);
         response.setUsers(users);
 
-//        response.getUsers().forEach(user ->
-//                messagingTemplate.convertAndSend("/topic/conversations/" + user.getId(), response)
-//        );
-
         return response;
     }
 
@@ -144,5 +141,22 @@ public class ConversationService {
         return participants
                 .stream().map(ConversationParticipant::getConversation).toList()
                 .stream().map(ConversationDto::toDto).toList();
+    }
+
+    public UUID getConversationIdByMessageId(UUID messageId) {
+        Message message = messageDao.findById(messageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
+
+        return message.getConversation().getId();
+    }
+
+    public void deleteConversation(UUID conversationId, UUID userId) {
+
+        if (!conversationParticipantDao.existsByConversationIdAndUserId(conversationId, userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to delete this conversation");
+        }
+
+        conversationDao.deleteById(conversationDao.findById(conversationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found")).getId());
     }
 }

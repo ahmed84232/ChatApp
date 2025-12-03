@@ -1,15 +1,16 @@
 package com.ahmedy.chat.service;
 
 import com.ahmedy.chat.dao.ConversationDao;
-import com.ahmedy.chat.dao.ConversationParticipantDao;
 import com.ahmedy.chat.dao.MessageDao;
 import com.ahmedy.chat.dao.UserDao;
-import com.ahmedy.chat.dto.ConversationDto;
 import com.ahmedy.chat.dto.MessageDto;
 import com.ahmedy.chat.entity.Conversation;
 import com.ahmedy.chat.entity.ConversationParticipant;
 import com.ahmedy.chat.entity.Message;
 import com.ahmedy.chat.entity.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,16 +26,14 @@ public class MessageService {
     private final MessageDao messageDao;
     private final ConversationDao conversationDao;
     private final UserDao userDao;
-    private final ConversationParticipantDao conversationParticipantDao;
 
     public MessageService(
             MessageDao messageDao,
             ConversationDao conversationDao,
-            UserDao userDao, ConversationParticipantDao conversationParticipantDao) {
+            UserDao userDao) {
         this.messageDao = messageDao;
         this.conversationDao = conversationDao;
         this.userDao = userDao;
-        this.conversationParticipantDao = conversationParticipantDao;
     }
 
     @Transactional
@@ -61,32 +60,35 @@ public class MessageService {
 
         Message savedMessage = messageDao.saveAndFlush(msg);
 
-        MessageDto response = new MessageDto();
-        response.setId(savedMessage.getId());
-        response.setMessageText(savedMessage.getMessageText());
-        response.setConversationId(savedMessage.getConversation().getId().toString());
-        response.setSenderId(savedMessage.getSender().getId().toString());
-        response.setSenderName(savedMessage.getSender().getUsername());
-        response.setSentAt(savedMessage.getSentAt());
-
-        return response;
+        return MessageDto.toDto(savedMessage);
 
     }
 
-    public List<MessageDto> getMessages(UUID conversationId) {
-        List<Message> Messages = messageDao.findByConversationIdOrderBySentAtAsc(conversationId);
+    public Page<MessageDto> getMessagesByConversationId(UUID conversationId, Integer page , Integer size) {
 
-        return Messages.stream().map(message ->
-        {
-            MessageDto response = new MessageDto();
-            response.setId(message.getId());
-            response.setMessageText(message.getMessageText());
-            response.setSentAt(message.getSentAt());
-            response.setConversationId(message.getConversation().getId().toString());
-            response.setSenderId(message.getSender().getId().toString());
-            response.setSenderName(message.getSender().getUsername());
-            return response;
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Message> Messages = messageDao.findByConversationIdOrderBySentAtAsc(conversationId, pageable);
+
+        return Messages.map(MessageDto::toDto);
+    }
+
+    public List<MessageDto> getMessagesByConversationId(UUID conversationId) {
+        return messageDao.findByConversationIdOrderBySentAtAsc(conversationId)
+                .stream()
+                .map(MessageDto::toDto).toList();
+    }
+
+    public void deleteMessage(UUID messageId, UUID senderId) {
+        boolean belongsToUser = messageDao.findById(messageId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"))
+                .getSender().getId().equals(senderId);
+
+        if (!belongsToUser) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "you are not allowed to delete this message");
         }
-        ).toList();
+
+        messageDao.deleteById(messageDao.findById(UUID.fromString(messageId.toString()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                                "There is no Message with this id")).getId());
     }
 }

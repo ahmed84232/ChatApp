@@ -1,16 +1,14 @@
 package com.ahmedy.chat.chat;
 
-import com.ahmedy.chat.dao.ConversationDao;
+import com.ahmedy.chat.dto.ActionDto;
 import com.ahmedy.chat.dto.MessageDto;
 import com.ahmedy.chat.dto.UserDto;
+import com.ahmedy.chat.enums.MessageStatus;
 import com.ahmedy.chat.service.ConversationService;
 import com.ahmedy.chat.service.MessageService;
-import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.List;
 import java.util.UUID;
@@ -23,37 +21,153 @@ public class MessageController {
     private final ConversationService conversationService;
 
     public MessageController(SimpMessagingTemplate messagingTemplate,
-                             MessageService messageService, ConversationDao conversationDao, ConversationService conversationService) {
+                             MessageService messageService, ConversationService conversationService) {
         this.messagingTemplate = messagingTemplate;
         this.messageService = messageService;
         this.conversationService = conversationService;
     }
 
-    @MessageMapping("/sendMessage/{conversationId}")
-    public void sendMessage(MessageDto messageRequestDto, @DestinationVariable String conversationId) {
-        messageRequestDto.setConversationId(conversationId);
+    private void sendMessage(MessageDto messageRequestDto) {
         MessageDto response = messageService.saveMessage(messageRequestDto);
 
-        List<UserDto> users = conversationService
-                .getConversation(UUID.fromString(conversationId))
-                .getUsers();
-
-        String recipientId = users.stream()
+        List<String> users = conversationService
+                .getConversation(UUID.fromString(messageRequestDto.getConversationId()))
+                .getUsers()
+                .stream()
                 .map(UserDto::getId)
-                .filter(id -> !id.equals(messageRequestDto.getSenderId()))
-                .findFirst()
-                .orElse(null);
+                .toList();
 
-        // Broadcast to /topic/user/{id}
-        messagingTemplate.convertAndSend("/topic/user/" + recipientId, response);
-        messagingTemplate.convertAndSend("/topic/user/" + messageRequestDto.getSenderId(), response);
+        for (String id : users) {
+            if (!id.equals(messageRequestDto.getSenderId())) {
+                messagingTemplate.convertAndSend("/queue/notification.user." + id, response);
+            }
+        }
+        messagingTemplate.convertAndSend("/queue/action.user." + messageRequestDto.getSenderId(), response);
+    }
 
-        // Assume DM chat
-        // User 1 send a message to conversation x
-        // backend will keep the sender id on stand by
-        // Backend fetches the conversation from DB and get the ids of the users in it
-        // The user id that's not the sender id (the receiver id) will be kept on stand by
-        // the backend will send the message to topic/user/{receiverId}
-        // Receiver will be listening to this topic in frontend already "topic/user/{receiverId}"
+    private void deleteMessage(UUID messageId, UUID senderId) {
+
+        UUID conversationId =  conversationService.getConversationIdByMessageId(messageId);
+
+        messageService.deleteMessage(messageId, senderId);
+
+        List<String> participants = conversationService
+                .getConversation(conversationId)
+                .getUsers()
+                .stream()
+                .map(UserDto::getId)
+                .toList();
+
+        ActionDto payload = new ActionDto();
+        payload.setAction("deleteMessage");
+        payload.setMessageID(messageId);
+
+        for (String id : participants) {
+            if (!id.equals(senderId.toString())) {
+                messagingTemplate.convertAndSend("/queue/notification.user." + id, payload);
+            }
+        }
+
+        messagingTemplate.convertAndSend("/queue/action.user." + senderId, payload);
+    }
+
+    private void deleteConversation(UUID conversationId, UUID senderId) {
+
+        List<String> participants = conversationService
+                .getConversation(conversationId)
+                .getUsers()
+                .stream()
+                .map(UserDto::getId)
+                .toList();
+
+        conversationService.deleteConversation(conversationId, senderId);
+
+        ActionDto payload = new ActionDto();
+        payload.setAction("deleteConversation");
+        payload.setConversationID(conversationId);
+
+
+        for (String id : participants) {
+            if (!id.equals(senderId.toString())) {
+                messagingTemplate.convertAndSend("/queue/notification.user." + id, payload);
+            }
+        }
+        messagingTemplate.convertAndSend("/queue/action.user." + senderId, conversationId);
+    }
+
+    private void typingIndicator(UUID conversationId, UUID senderId) {
+
+        List<String> participants = conversationService
+                .getConversation(conversationId)
+                .getUsers()
+                .stream()
+                .map(UserDto::getId)
+                .filter(id -> !id.equals(senderId.toString()))
+                .toList();
+
+        ActionDto payload = new ActionDto();
+        payload.setAction("typingIndicator");
+        payload.setConversationID(conversationId);
+        payload.setSenderId(senderId);
+
+        for (String id : participants) {
+            messagingTemplate.convertAndSend("/queue/notification.user." + id, payload);
+        }
+    }
+
+    private void messageDelivery(UUID conversationId, UUID senderId, Enum<MessageStatus> status) {
+
+        List<MessageDto> messages = messageService.getMessagesByConversationId(conversationId);
+
+        List<MessageDto> messageStatus = messages.stream()
+                .filter(m -> m.getStatus() == MessageStatus.SENT)
+                .toList();
+        
+        messageStatus.forEach(m -> m.setStatus(status));
+
+        List<String> participantIds = conversationService
+                .getConversation(conversationId)
+                .getUsers()
+                .stream()
+                .map(UserDto::getId)
+                .filter(id -> !id.equals(senderId.toString()))
+                .toList();
+
+        for (String userId : participantIds) {
+            messagingTemplate.convertAndSend("/queue/notification.user." + userId, messageStatus);
+        }
+    }
+
+
+    @MessageMapping("/action")
+    public void action(ActionDto actionDto) {
+
+        if (actionDto.getAction().contains("deleteMessage")) {
+
+            deleteMessage(actionDto.getMessageID(), actionDto.getSenderId());
+
+        } else if (actionDto.getAction().contains("sendMessage")) {
+
+            MessageDto messageDto = new MessageDto();
+            messageDto.setSenderId(actionDto.getSenderId().toString());
+            messageDto.setMessageText(actionDto.getMessageText());
+            messageDto.setConversationId(actionDto.getConversationID().toString());
+            sendMessage(messageDto);
+
+        } else if (actionDto.getAction().contains("typingIndicator")) {
+
+            typingIndicator(actionDto.getConversationID(), actionDto.getSenderId());
+
+        } else if (actionDto.getAction().contains("MessageStatus")) {
+
+            MessageStatus ms = MessageStatus.valueOf(String.valueOf(actionDto.getMessageStatus()));
+            messageDelivery(actionDto.getConversationID(), actionDto.getSenderId(), ms);
+
+        } else if (actionDto.getAction().contains("deleteConversation")) {
+
+            deleteConversation(actionDto.getConversationID(), actionDto.getSenderId());
+
+        } else throw new IllegalArgumentException("Invalid action: " + actionDto.getAction());
+
     }
 }

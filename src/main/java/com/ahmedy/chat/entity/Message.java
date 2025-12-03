@@ -1,9 +1,11 @@
 package com.ahmedy.chat.entity;
 
+import com.ahmedy.chat.enums.MessageStatus;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.ToString;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -34,6 +36,11 @@ public class Message {
     @Column(name = "sent_at")
     private LocalDateTime sentAt;
 
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private LocalDateTime updateAt;
+
     @Column(name = "status")
-    private String status = "sent";
+    @Enumerated(EnumType.STRING)
+    private MessageStatus status = MessageStatus.SENT;
 }
