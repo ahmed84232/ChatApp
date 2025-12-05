@@ -15,8 +15,7 @@ import java.util.UUID;
 
 public interface MessageDao extends JpaRepository<Message, UUID> {
 
-    Page<Message> findByConversationIdOrderBySentAtAsc(UUID conversationId,
-                                                       Pageable pageable);
+    Page<Message> findByConversationId(UUID conversationId, Pageable pageable);
 
     List<Message> findByConversationIdOrderBySentAtAsc(UUID conversationId);
 }

@@ -8,9 +8,13 @@ import com.ahmedy.chat.entity.Conversation;
 import com.ahmedy.chat.entity.ConversationParticipant;
 import com.ahmedy.chat.entity.Message;
 import com.ahmedy.chat.entity.User;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,7 +22,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 public class MessageService {
@@ -64,12 +67,56 @@ public class MessageService {
 
     }
 
+    @Transactional
+//    @CacheEvict(value = "mainCache", key = "#message.conversationId + ':' + #page + ':' + #size")
+    public MessageDto saveMessage(MessageDto message, Integer page, Integer size) {
+        return saveMessage(message);
+    }
+
+    @Transactional
+    public MessageDto updateMessage(MessageDto req) {
+
+        Message message = messageDao.findById(req.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
+
+        Conversation conversation = conversationDao.findById(
+                        UUID.fromString(req.getConversationId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
+
+        User sender = userDao.findById(UUID.fromString(req.getSenderId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        List<User> users = conversation.getParticipants().stream().map(ConversationParticipant::getUser).toList();
+
+        if (!users.contains(sender)) {
+
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User is not a participant of conversation");
+        }
+
+        if (req.getMessageText() != null) {
+            message.setMessageText(req.getMessageText());
+        }
+
+        if (req.getStatus() != null) {
+            message.setStatus(req.getStatus());
+        }
+
+        Message savedMessage = messageDao.saveAndFlush(message);
+
+        return MessageDto.toDto(savedMessage);
+    }
+
+//    @Cacheable(cacheNames = "mainCache", key = "#conversationId + ':' + #page + ':' + #size")
     public Page<MessageDto> getMessagesByConversationId(UUID conversationId, Integer page , Integer size) {
 
-        Pageable pageable = PageRequest.of(page, size);
-        Page<Message> Messages = messageDao.findByConversationIdOrderBySentAtAsc(conversationId, pageable);
+        Pageable pageable = PageRequest.of(page, size, Sort.by("sentAt").ascending());
+        Page<Message> Messages = messageDao.findByConversationId(conversationId, pageable);
 
         return Messages.map(MessageDto::toDto);
+    }
+
+    public int getPageCount(UUID conversationId, Integer size) {
+        return messageDao.findByConversationId(conversationId, Pageable.ofSize(size)).getTotalPages();
     }
 
     public List<MessageDto> getMessagesByConversationId(UUID conversationId) {
@@ -91,4 +138,5 @@ public class MessageService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                                 "There is no Message with this id")).getId());
     }
+
 }

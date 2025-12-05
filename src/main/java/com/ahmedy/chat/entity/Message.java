@@ -33,12 +33,12 @@ public class Message {
     private String messageText;
 
     @CreationTimestamp
-    @Column(name = "sent_at")
+    @Column(name = "sent_at", nullable = false, updatable = false)
     private LocalDateTime sentAt;
 
     @UpdateTimestamp
     @Column(name = "updated_at")
-    private LocalDateTime updateAt;
+    private LocalDateTime updatedAt;
 
     @Column(name = "status")
     @Enumerated(EnumType.STRING)

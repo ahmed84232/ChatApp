@@ -2,6 +2,14 @@ spring:
   application:
     name: chat
 
+  cache:
+    type: redis
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
   datasource:
     url: jdbc:postgresql://localhost:5432/postgres
     username: postgres

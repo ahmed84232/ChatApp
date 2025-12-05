@@ -6,9 +6,13 @@ import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.enums.MessageStatus;
 import com.ahmedy.chat.service.ConversationService;
 import com.ahmedy.chat.service.MessageService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -19,12 +23,14 @@ public class MessageController {
     private final SimpMessagingTemplate messagingTemplate;
     private final MessageService messageService;
     private final ConversationService conversationService;
+    private final ObjectMapper objectMapper;
 
     public MessageController(SimpMessagingTemplate messagingTemplate,
-                             MessageService messageService, ConversationService conversationService) {
+                             MessageService messageService, ConversationService conversationService, ObjectMapper objectMapper) {
         this.messagingTemplate = messagingTemplate;
         this.messageService = messageService;
         this.conversationService = conversationService;
+        this.objectMapper = objectMapper;
     }
 
     private void sendMessage(MessageDto messageRequestDto) {
@@ -115,16 +121,28 @@ public class MessageController {
         }
     }
 
-    private void messageDelivery(UUID conversationId, UUID senderId, Enum<MessageStatus> status) {
+    public void messageDelivery(List<MessageDto> messages, UUID senderId, MessageStatus status) {
 
-        List<MessageDto> messages = messageService.getMessagesByConversationId(conversationId);
+        messages.forEach(m -> {
+            m.setStatus(status);
+            messageService.updateMessage(m);
+        });
 
-        List<MessageDto> messageStatus = messages.stream()
-                .filter(m -> m.getStatus() == MessageStatus.SENT)
+        List<String> participantIds = conversationService
+                .getConversation(UUID.fromString(messages.getFirst().getConversationId()))
+                .getUsers()
+                .stream()
+                .map(UserDto::getId)
+                .filter(id -> !id.equals(senderId.toString()))
                 .toList();
-        
-        messageStatus.forEach(m -> m.setStatus(status));
 
+        for (String userId : participantIds) {
+            messagingTemplate.convertAndSend("/queue/notification.user." + userId, messages);
+        }
+    }
+
+    private void updateMessage(MessageDto messageRequestDto, UUID senderId, UUID conversationId) {
+        MessageDto updatedMessage = messageService.updateMessage(messageRequestDto);
         List<String> participantIds = conversationService
                 .getConversation(conversationId)
                 .getUsers()
@@ -134,14 +152,14 @@ public class MessageController {
                 .toList();
 
         for (String userId : participantIds) {
-            messagingTemplate.convertAndSend("/queue/notification.user." + userId, messageStatus);
+            messagingTemplate.convertAndSend("/queue/notification.user." + userId, updatedMessage);
         }
     }
 
 
     @MessageMapping("/action")
-    public void action(ActionDto actionDto) {
-
+    public void action(ActionDto actionDto) throws JsonProcessingException {
+        System.out.println(actionDto.toString());
         if (actionDto.getAction().contains("deleteMessage")) {
 
             deleteMessage(actionDto.getMessageID(), actionDto.getSenderId());
@@ -161,11 +179,23 @@ public class MessageController {
         } else if (actionDto.getAction().contains("MessageStatus")) {
 
             MessageStatus ms = MessageStatus.valueOf(String.valueOf(actionDto.getMessageStatus()));
-            messageDelivery(actionDto.getConversationID(), actionDto.getSenderId(), ms);
+
+            List<MessageDto> messages = objectMapper.convertValue(
+                    actionDto.getObject(),
+                    new TypeReference<>() {}
+            );
+            messageDelivery(messages, actionDto.getSenderId(), ms);
 
         } else if (actionDto.getAction().contains("deleteConversation")) {
 
             deleteConversation(actionDto.getConversationID(), actionDto.getSenderId());
+        } else if (actionDto.getAction().contains("updateMessage")) {
+            MessageDto messageDto = new MessageDto();
+            messageDto.setId(actionDto.getMessageID());
+            messageDto.setSenderId(actionDto.getSenderId().toString());
+            messageDto.setMessageText(actionDto.getMessageText());
+            messageDto.setConversationId(actionDto.getConversationID().toString());
+            updateMessage(messageDto, actionDto.getSenderId(), actionDto.getConversationID());
 
         } else throw new IllegalArgumentException("Invalid action: " + actionDto.getAction());
 

@@ -4,10 +4,14 @@ import com.ahmedy.chat.enums.MessageStatus;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.ToString;
+
+import java.util.Map;
 import java.util.UUID;
 
 @Getter
 @Setter
+@ToString
 public class ActionDto {
 
     private String senderName;
@@ -18,5 +22,8 @@ public class ActionDto {
     private String action;
     private MessageStatus messageStatus;
     private String messageText;
+    private Map<String, String> metadata;
+    private Object object;
+
 
 }

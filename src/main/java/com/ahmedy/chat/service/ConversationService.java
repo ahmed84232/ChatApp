@@ -67,9 +67,8 @@ public class ConversationService {
         Conversation conv = new Conversation();
         conv.setName(req.getName());
 
-        if (req.getParticipantIds().size() <= 2) {
-            conv.setGroupChat(true);
-        }
+        conv.setGroupChat(req.getParticipantIds().size() > 1);
+
 
         Conversation savedConversation = conversationDao.save(conv);
 

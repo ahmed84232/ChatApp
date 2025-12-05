@@ -28,10 +28,15 @@ public class ChatController {
         return ResponseEntity.ok(messages);
     }
 
-    @PostMapping("/messages")
-    public ResponseEntity<MessageDto> sendMessage(@RequestBody MessageDto request) {
-        MessageDto saved = messageService.saveMessage(request);
-        return ResponseEntity.ok(saved);
+    @GetMapping("/conversations/{conversationId}/pages")
+    public int getPages(@PathVariable UUID conversationId , @RequestParam Integer size) {
+        return messageService.getPageCount(conversationId, size);
+    }
+
+    @PatchMapping("/messages")
+    public ResponseEntity<MessageDto> updateMessage(@RequestBody MessageDto request) {
+        return ResponseEntity.ok(messageService.updateMessage(request));
+
     }
 
     @DeleteMapping("/messages/{messageId}")

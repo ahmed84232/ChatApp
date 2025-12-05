@@ -17,6 +17,7 @@ public class CorsConfig {
         // Allow credentials and specific origins
         config.setAllowCredentials(true);
         config.addAllowedOrigin("http://localhost:3000");
+        config.addAllowedOrigin("https://smiling-lynx-instantly.ngrok-free.app");
 
         // Allow all headers and methods for development
         config.addAllowedHeader("*");

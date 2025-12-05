@@ -5,28 +5,24 @@ import com.ahmedy.chat.enums.MessageStatus;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.data.redis.core.RedisHash;
+import org.springframework.data.redis.core.TimeToLive;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Getter
 @Setter
-public class MessageDto {
-
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+public class MessageDto implements Serializable {
     private UUID id;
-
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     private String senderName;
 
     private String conversationId;
     private String senderId;
     private String messageText;
 
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
-    private Enum<MessageStatus> status;
-
-    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private MessageStatus status;
     private LocalDateTime sentAt;
 
     public static MessageDto toDto(Message message) {
