@@ -23,8 +23,12 @@ public class MessageController {
     private final ConversationService conversationService;
     private final ObjectMapper objectMapper;
 
-    public MessageController(SimpMessagingTemplate messagingTemplate,
-                             MessageService messageService, ConversationService conversationService, ObjectMapper objectMapper) {
+    public MessageController(
+            SimpMessagingTemplate messagingTemplate,
+            MessageService messageService,
+            ConversationService conversationService,
+            ObjectMapper objectMapper
+    ) {
         this.messagingTemplate = messagingTemplate;
         this.messageService = messageService;
         this.conversationService = conversationService;
@@ -40,11 +44,7 @@ public class MessageController {
 
         } else if (actionDto.getAction().contains("sendMessage")) {
 
-            MessageDto messageDto = new MessageDto();
-            messageDto.setSenderId(actionDto.getSenderId().toString());
-            messageDto.setMessageText(actionDto.getMessageText());
-            messageDto.setConversationId(actionDto.getConversationID().toString());
-            sendMessage(messageDto);
+            messageService.sendMessage(actionDto);
 
         } else if (actionDto.getAction().contains("typingIndicator")) {
 
@@ -62,29 +62,11 @@ public class MessageController {
 
         } else if (actionDto.getAction().contains("deleteConversation")) {
 
-            deleteConversation(actionDto.getConversationID(), actionDto.getSenderId());
+            deleteConversation(actionDto);
         } else if (actionDto.getAction().contains("updateMessage")) {
             updateMessage(actionDto);
         } else throw new IllegalArgumentException("Invalid action: " + actionDto.getAction());
 
-    }
-
-    private void sendMessage(MessageDto messageRequestDto) {
-        MessageDto response = messageService.saveMessage(messageRequestDto);
-
-        List<String> users = conversationService
-                .getConversation(UUID.fromString(messageRequestDto.getConversationId()))
-                .getUsers()
-                .stream()
-                .map(UserDto::getId)
-                .toList();
-
-        for (String id : users) {
-            if (!id.equals(messageRequestDto.getSenderId())) {
-                messagingTemplate.convertAndSend("/queue/notification.user." + id, response);
-            }
-        }
-        messagingTemplate.convertAndSend("/queue/action.user." + messageRequestDto.getSenderId(), response);
     }
 
     private void deleteMessage(ActionDto actionDto) {
@@ -114,28 +96,25 @@ public class MessageController {
         messagingTemplate.convertAndSend("/queue/action.user." + message.getSenderId(), actionDto);
     }
 
-    private void deleteConversation(UUID conversationId, UUID senderId) {
+    private void deleteConversation(ActionDto actionDto) {
 
         List<String> participants = conversationService
-                .getConversation(conversationId)
+                .getConversation(actionDto.getConversationID())
                 .getUsers()
                 .stream()
                 .map(UserDto::getId)
                 .toList();
 
-        conversationService.deleteConversation(conversationId, senderId);
-
-        ActionDto payload = new ActionDto();
-        payload.setAction("deleteConversation");
-        payload.setConversationID(conversationId);
-
+        conversationService.deleteConversation(actionDto.getConversationID(), actionDto.getSenderId());
 
         for (String id : participants) {
-            if (!id.equals(senderId.toString())) {
-                messagingTemplate.convertAndSend("/queue/notification.user." + id, payload);
+            if (!id.equals(actionDto.getSenderId().toString())) {
+                messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
             }
         }
-        messagingTemplate.convertAndSend("/queue/action.user." + senderId, conversationId);
+        messagingTemplate.convertAndSend(
+                "/queue/action.user." + actionDto.getSenderId(),
+                actionDto.getConversationID());
     }
 
     private void typingIndicator(UUID conversationId, UUID senderId) {

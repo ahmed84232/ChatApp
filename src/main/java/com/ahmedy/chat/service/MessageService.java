@@ -3,12 +3,15 @@ package com.ahmedy.chat.service;
 import com.ahmedy.chat.dao.ConversationDao;
 import com.ahmedy.chat.dao.MessageDao;
 import com.ahmedy.chat.dao.UserDao;
+import com.ahmedy.chat.dto.ActionDto;
 import com.ahmedy.chat.dto.MessageDto;
+import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.entity.Conversation;
 import com.ahmedy.chat.entity.ConversationParticipant;
 import com.ahmedy.chat.entity.Message;
 import com.ahmedy.chat.entity.User;
-import org.springframework.cache.CacheManager;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
@@ -16,6 +19,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,14 +33,21 @@ public class MessageService {
     private final MessageDao messageDao;
     private final ConversationDao conversationDao;
     private final UserDao userDao;
+    private final ObjectMapper objectMapper;
+    private final ConversationService conversationService;
+    private final SimpMessagingTemplate messagingTemplate;
+
 
     public MessageService(
             MessageDao messageDao,
             ConversationDao conversationDao,
-            UserDao userDao) {
+            UserDao userDao, ObjectMapper objectMapper, ConversationService conversationService, SimpMessagingTemplate messagingTemplate) {
         this.messageDao = messageDao;
         this.conversationDao = conversationDao;
         this.userDao = userDao;
+        this.objectMapper = objectMapper;
+        this.conversationService = conversationService;
+        this.messagingTemplate = messagingTemplate;
     }
 
     @Transactional
@@ -67,10 +78,38 @@ public class MessageService {
 
     }
 
+
     @Transactional
-//    @CacheEvict(value = "mainCache", key = "#message.conversationId + ':' + #page + ':' + #size")
-    public MessageDto saveMessage(MessageDto message, Integer page, Integer size) {
-        return saveMessage(message);
+    @CacheEvict(
+            value = "mainCache",
+            key = "#actionDto.object.conversationId +"
+                    + " ':' + #actionDto.metadata.get('page') +"
+                    + " ':' + #actionDto.metadata.get('size')"
+    )
+    public void sendMessage(ActionDto actionDto) {
+
+        MessageDto message = objectMapper.convertValue(
+                actionDto.getObject(),
+                new TypeReference<>() {}
+        );
+
+        MessageDto response = saveMessage(message);
+
+        List<String> users = conversationService
+                .getConversation(UUID.fromString(message.getConversationId()))
+                .getUsers()
+                .stream()
+                .map(UserDto::getId)
+                .toList();
+
+        actionDto.setObject(response);
+
+        for (String id : users) {
+            if (!id.equals(message.getSenderId())) {
+                messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
+            }
+        }
+        messagingTemplate.convertAndSend("/queue/action.user." + message.getSenderId(), actionDto);
     }
 
     @Transactional
@@ -106,8 +145,9 @@ public class MessageService {
         return MessageDto.toDto(savedMessage);
     }
 
-//    @Cacheable(cacheNames = "mainCache", key = "#conversationId + ':' + #page + ':' + #size")
+    @Cacheable(cacheNames = "mainCache", key = "#conversationId + ':' + #page + ':' + #size")
     public Page<MessageDto> getMessagesByConversationId(UUID conversationId, Integer page , Integer size) {
+        System.out.println(page);
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("sentAt").ascending());
         Page<Message> Messages = messageDao.findByConversationId(conversationId, pageable);
