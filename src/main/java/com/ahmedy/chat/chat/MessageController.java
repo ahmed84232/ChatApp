@@ -158,7 +158,7 @@ public class MessageController {
         }
     }
 
-    public void messageDelivery(List<MessageDto> messages, UUID senderId, MessageStatus status) {
+    private void messageDelivery(List<MessageDto> messages, UUID senderId, MessageStatus status) {
 
         messages.forEach(m -> {
             m.setStatus(status);
