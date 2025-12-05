@@ -6,13 +6,11 @@ import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.enums.MessageStatus;
 import com.ahmedy.chat.service.ConversationService;
 import com.ahmedy.chat.service.MessageService;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -51,30 +49,31 @@ public class MessageController {
         messagingTemplate.convertAndSend("/queue/action.user." + messageRequestDto.getSenderId(), response);
     }
 
-    private void deleteMessage(UUID messageId, UUID senderId) {
+    private void deleteMessage(ActionDto actionDto) {
 
-        UUID conversationId =  conversationService.getConversationIdByMessageId(messageId);
+        MessageDto message = objectMapper.convertValue(
+                actionDto.getObject(),
+                new TypeReference<>() {}
+        );
 
-        messageService.deleteMessage(messageId, senderId);
+        UUID conversationId =  conversationService.getConversationIdByMessageId(message.getId());
+
+        messageService.deleteMessage(message.getId(), UUID.fromString(message.getSenderId()));
 
         List<String> participants = conversationService
                 .getConversation(conversationId)
                 .getUsers()
                 .stream()
                 .map(UserDto::getId)
+                .filter(id -> !id.equals(message.getSenderId()))
                 .toList();
 
-        ActionDto payload = new ActionDto();
-        payload.setAction("deleteMessage");
-        payload.setMessageID(messageId);
-
         for (String id : participants) {
-            if (!id.equals(senderId.toString())) {
-                messagingTemplate.convertAndSend("/queue/notification.user." + id, payload);
-            }
+
+            messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
         }
 
-        messagingTemplate.convertAndSend("/queue/action.user." + senderId, payload);
+        messagingTemplate.convertAndSend("/queue/action.user." + message.getSenderId(), actionDto);
     }
 
     private void deleteConversation(UUID conversationId, UUID senderId) {
@@ -141,28 +140,33 @@ public class MessageController {
         }
     }
 
-    private void updateMessage(MessageDto messageRequestDto, UUID senderId, UUID conversationId) {
-        MessageDto updatedMessage = messageService.updateMessage(messageRequestDto);
+    private void updateMessage(ActionDto actionDto) {
+
+        MessageDto message = objectMapper.convertValue(
+                actionDto.getObject(),
+                new TypeReference<>() {}
+        );
+        messageService.updateMessage(message);
         List<String> participantIds = conversationService
-                .getConversation(conversationId)
+                .getConversation(UUID.fromString(message.getConversationId()))
                 .getUsers()
                 .stream()
                 .map(UserDto::getId)
-                .filter(id -> !id.equals(senderId.toString()))
+                .filter(id -> !id.equals(message.getSenderId()))
                 .toList();
 
         for (String userId : participantIds) {
-            messagingTemplate.convertAndSend("/queue/notification.user." + userId, updatedMessage);
+            messagingTemplate.convertAndSend("/queue/notification.user." + userId, actionDto);
         }
     }
 
 
     @MessageMapping("/action")
-    public void action(ActionDto actionDto) throws JsonProcessingException {
+    public void action(ActionDto actionDto) {
         System.out.println(actionDto.toString());
         if (actionDto.getAction().contains("deleteMessage")) {
 
-            deleteMessage(actionDto.getMessageID(), actionDto.getSenderId());
+            deleteMessage(actionDto);
 
         } else if (actionDto.getAction().contains("sendMessage")) {
 
@@ -190,13 +194,7 @@ public class MessageController {
 
             deleteConversation(actionDto.getConversationID(), actionDto.getSenderId());
         } else if (actionDto.getAction().contains("updateMessage")) {
-            MessageDto messageDto = new MessageDto();
-            messageDto.setId(actionDto.getMessageID());
-            messageDto.setSenderId(actionDto.getSenderId().toString());
-            messageDto.setMessageText(actionDto.getMessageText());
-            messageDto.setConversationId(actionDto.getConversationID().toString());
-            updateMessage(messageDto, actionDto.getSenderId(), actionDto.getConversationID());
-
+            updateMessage(actionDto);
         } else throw new IllegalArgumentException("Invalid action: " + actionDto.getAction());
 
     }
