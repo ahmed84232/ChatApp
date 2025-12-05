@@ -31,6 +31,44 @@ public class MessageController {
         this.objectMapper = objectMapper;
     }
 
+    @MessageMapping("/action")
+    public void action(ActionDto actionDto) {
+        System.out.println(actionDto.toString());
+        if (actionDto.getAction().contains("deleteMessage")) {
+
+            deleteMessage(actionDto);
+
+        } else if (actionDto.getAction().contains("sendMessage")) {
+
+            MessageDto messageDto = new MessageDto();
+            messageDto.setSenderId(actionDto.getSenderId().toString());
+            messageDto.setMessageText(actionDto.getMessageText());
+            messageDto.setConversationId(actionDto.getConversationID().toString());
+            sendMessage(messageDto);
+
+        } else if (actionDto.getAction().contains("typingIndicator")) {
+
+            typingIndicator(actionDto.getConversationID(), actionDto.getSenderId());
+
+        } else if (actionDto.getAction().contains("MessageStatus")) {
+
+            MessageStatus ms = MessageStatus.valueOf(String.valueOf(actionDto.getMessageStatus()));
+
+            List<MessageDto> messages = objectMapper.convertValue(
+                    actionDto.getObject(),
+                    new TypeReference<>() {}
+            );
+            messageDelivery(messages, actionDto.getSenderId(), ms);
+
+        } else if (actionDto.getAction().contains("deleteConversation")) {
+
+            deleteConversation(actionDto.getConversationID(), actionDto.getSenderId());
+        } else if (actionDto.getAction().contains("updateMessage")) {
+            updateMessage(actionDto);
+        } else throw new IllegalArgumentException("Invalid action: " + actionDto.getAction());
+
+    }
+
     private void sendMessage(MessageDto messageRequestDto) {
         MessageDto response = messageService.saveMessage(messageRequestDto);
 
@@ -161,41 +199,4 @@ public class MessageController {
     }
 
 
-    @MessageMapping("/action")
-    public void action(ActionDto actionDto) {
-        System.out.println(actionDto.toString());
-        if (actionDto.getAction().contains("deleteMessage")) {
-
-            deleteMessage(actionDto);
-
-        } else if (actionDto.getAction().contains("sendMessage")) {
-
-            MessageDto messageDto = new MessageDto();
-            messageDto.setSenderId(actionDto.getSenderId().toString());
-            messageDto.setMessageText(actionDto.getMessageText());
-            messageDto.setConversationId(actionDto.getConversationID().toString());
-            sendMessage(messageDto);
-
-        } else if (actionDto.getAction().contains("typingIndicator")) {
-
-            typingIndicator(actionDto.getConversationID(), actionDto.getSenderId());
-
-        } else if (actionDto.getAction().contains("MessageStatus")) {
-
-            MessageStatus ms = MessageStatus.valueOf(String.valueOf(actionDto.getMessageStatus()));
-
-            List<MessageDto> messages = objectMapper.convertValue(
-                    actionDto.getObject(),
-                    new TypeReference<>() {}
-            );
-            messageDelivery(messages, actionDto.getSenderId(), ms);
-
-        } else if (actionDto.getAction().contains("deleteConversation")) {
-
-            deleteConversation(actionDto.getConversationID(), actionDto.getSenderId());
-        } else if (actionDto.getAction().contains("updateMessage")) {
-            updateMessage(actionDto);
-        } else throw new IllegalArgumentException("Invalid action: " + actionDto.getAction());
-
-    }
 }
