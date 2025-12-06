@@ -52,13 +52,8 @@ public class MessageController {
             typingIndicator(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else if (actionDto.getAction().contains("MessageStatus")) {
-            MessageStatus ms = MessageStatus.valueOf(String.valueOf(actionDto.getMessageStatus()));
 
-            List<MessageDto> messages = objectMapper.convertValue(
-                    actionDto.getObject(),
-                    new TypeReference<>() {}
-            );
-            messageDelivery(messages, actionDto.getSenderId(), ms);
+            messageDelivery(objectMapper.convertValue(actionDto, new TypeReference<ActionDto<List<MessageDto>>>() {}));
 
         } else if (actionDto.getAction().contains("deleteConversation")) {
             deleteConversation(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
@@ -131,7 +126,14 @@ public class MessageController {
         }
     }
 
-    private void messageDelivery(List<MessageDto> messages, UUID senderId, MessageStatus status) {
+    private void messageDelivery(ActionDto<List<MessageDto>> actionDto) {
+
+        UUID senderId = UUID.fromString(actionDto.getMetadata().get("senderId"));
+        MessageStatus status = MessageStatus.valueOf(actionDto.getMetadata().get("messageStatus"));
+
+        List<MessageDto> messages = objectMapper.convertValue(
+                actionDto.getObject(),
+                new TypeReference<>() {});
 
         messages.forEach(m -> {
             m.setStatus(status);
