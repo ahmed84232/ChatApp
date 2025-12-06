@@ -36,22 +36,22 @@ public class MessageController {
     }
 
     @MessageMapping("/action")
-    public void action(ActionDto actionDto) {
-        System.out.println(actionDto.toString());
-        if (actionDto.getAction().contains("deleteMessage")) {
+    public void action(ActionDto<?> actionDto) {
+        System.out.println(actionDto);
 
-            deleteMessage(actionDto);
+        if (actionDto.getAction().contains("sendMessage")) {
+            messageService.sendMessage(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
-        } else if (actionDto.getAction().contains("sendMessage")) {
+        } else if (actionDto.getAction().contains("updateMessage")) {
+            messageService.updateMessage(objectMapper.convertValue(actionDto, new TypeReference<ActionDto<MessageDto>>() {}));
 
-            messageService.sendMessage(actionDto);
+        } else if (actionDto.getAction().contains("deleteMessage")) {
+            deleteMessage(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else if (actionDto.getAction().contains("typingIndicator")) {
-
-            typingIndicator(actionDto.getConversationID(), actionDto.getSenderId());
+            typingIndicator(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else if (actionDto.getAction().contains("MessageStatus")) {
-
             MessageStatus ms = MessageStatus.valueOf(String.valueOf(actionDto.getMessageStatus()));
 
             List<MessageDto> messages = objectMapper.convertValue(
@@ -61,15 +61,13 @@ public class MessageController {
             messageDelivery(messages, actionDto.getSenderId(), ms);
 
         } else if (actionDto.getAction().contains("deleteConversation")) {
+            deleteConversation(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
-            deleteConversation(actionDto);
-        } else if (actionDto.getAction().contains("updateMessage")) {
-            updateMessage(actionDto);
         } else throw new IllegalArgumentException("Invalid action: " + actionDto.getAction());
 
     }
 
-    private void deleteMessage(ActionDto actionDto) {
+    private void deleteMessage(ActionDto<MessageDto> actionDto) {
 
         MessageDto message = objectMapper.convertValue(
                 actionDto.getObject(),
@@ -96,7 +94,7 @@ public class MessageController {
         messagingTemplate.convertAndSend("/queue/action.user." + message.getSenderId(), actionDto);
     }
 
-    private void deleteConversation(ActionDto actionDto) {
+    private void deleteConversation(ActionDto<MessageDto> actionDto) {
 
         List<String> participants = conversationService
                 .getConversation(actionDto.getConversationID())
@@ -117,23 +115,19 @@ public class MessageController {
                 actionDto.getConversationID());
     }
 
-    private void typingIndicator(UUID conversationId, UUID senderId) {
+    private void typingIndicator(ActionDto<MessageDto> actionDto) {
 
         List<String> participants = conversationService
-                .getConversation(conversationId)
+                .getConversation(UUID.fromString(String.valueOf(actionDto.getMetadata().get("conversationId"))))
                 .getUsers()
                 .stream()
                 .map(UserDto::getId)
-                .filter(id -> !id.equals(senderId.toString()))
+                .filter(id -> !id.equals(actionDto.getMetadata().get("senderId")))
                 .toList();
 
-        ActionDto payload = new ActionDto();
-        payload.setAction("typingIndicator");
-        payload.setConversationID(conversationId);
-        payload.setSenderId(senderId);
 
         for (String id : participants) {
-            messagingTemplate.convertAndSend("/queue/notification.user." + id, payload);
+            messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
         }
     }
 
@@ -157,24 +151,14 @@ public class MessageController {
         }
     }
 
-    private void updateMessage(ActionDto actionDto) {
+    private void updateMessage(ActionDto<MessageDto> actionDto) {
 
         MessageDto message = objectMapper.convertValue(
                 actionDto.getObject(),
                 new TypeReference<>() {}
         );
         messageService.updateMessage(message);
-        List<String> participantIds = conversationService
-                .getConversation(UUID.fromString(message.getConversationId()))
-                .getUsers()
-                .stream()
-                .map(UserDto::getId)
-                .filter(id -> !id.equals(message.getSenderId()))
-                .toList();
 
-        for (String userId : participantIds) {
-            messagingTemplate.convertAndSend("/queue/notification.user." + userId, actionDto);
-        }
     }
 
 

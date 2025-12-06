@@ -34,8 +34,8 @@ public class ChatController {
     }
 
     @PatchMapping("/messages")
-    public ResponseEntity<MessageDto> updateMessage(@RequestBody MessageDto request) {
-        return ResponseEntity.ok(messageService.updateMessage(request));
+    public ResponseEntity<MessageDto> updateMessage(@RequestBody ActionDto<MessageDto> actionDto) {
+        return ResponseEntity.ok(messageService.updateMessage(actionDto));
 
     }
 

@@ -41,7 +41,11 @@ public class MessageService {
     public MessageService(
             MessageDao messageDao,
             ConversationDao conversationDao,
-            UserDao userDao, ObjectMapper objectMapper, ConversationService conversationService, SimpMessagingTemplate messagingTemplate) {
+            UserDao userDao,
+            ObjectMapper objectMapper,
+            ConversationService conversationService,
+            SimpMessagingTemplate messagingTemplate
+    ) {
         this.messageDao = messageDao;
         this.conversationDao = conversationDao;
         this.userDao = userDao;
@@ -51,78 +55,66 @@ public class MessageService {
     }
 
     @Transactional
-    public MessageDto saveMessage(MessageDto req) {
-
-        Conversation conversation = conversationDao.findById(
-                        UUID.fromString(req.getConversationId()))
+    public MessageDto saveMessage(MessageDto messageDto) {
+        Conversation conversation = conversationDao.
+                findById(UUID.fromString(messageDto.getConversationId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
 
-        User sender = userDao.findById(UUID.fromString(req.getSenderId()))
+        User sender = userDao
+                .findById(UUID.fromString(messageDto.getSenderId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         List<User> users = conversation.getParticipants().stream().map(ConversationParticipant::getUser).toList();
 
         if (!users.contains(sender)) {
-
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User is not a participant of conversation");
         }
 
-        Message msg = new Message();
-        msg.setConversation(conversation);
-        msg.setSender(sender);
-        msg.setMessageText(req.getMessageText());
+        Message message = new Message();
+        message.setConversation(conversation);
+        message.setSender(sender);
+        message.setMessageText(messageDto.getMessageText());
 
-        Message savedMessage = messageDao.saveAndFlush(msg);
-
-        return MessageDto.toDto(savedMessage);
-
+        return MessageDto.toDto(messageDao.saveAndFlush(message));
     }
-
 
     @Transactional
     @CacheEvict(
-            value = "mainCache",
-            key = "#actionDto.object.conversationId +"
-                    + " ':' + #actionDto.metadata.get('page') +"
-                    + " ':' + #actionDto.metadata.get('size')"
+            cacheNames = "mainCache",
+            key = "#actionDto.object.conversationId + ':' + #root.target.getMessagePage(#actionDto)"
     )
-    public void sendMessage(ActionDto actionDto) {
-
-        MessageDto message = objectMapper.convertValue(
+    public MessageDto updateMessage(ActionDto<MessageDto> actionDto) {
+        MessageDto messageDto = objectMapper.convertValue(
                 actionDto.getObject(),
                 new TypeReference<>() {}
         );
 
-        MessageDto response = saveMessage(message);
+        messageDao.getMessageIndex(UUID.fromString(messageDto.getConversationId()), messageDto.getId());
 
-        List<String> users = conversationService
-                .getConversation(UUID.fromString(message.getConversationId()))
+        List<String> participantIds = conversationService
+                .getConversation(UUID.fromString(messageDto.getConversationId()))
                 .getUsers()
                 .stream()
                 .map(UserDto::getId)
+                .filter(id -> !id.equals(messageDto.getSenderId()))
                 .toList();
 
-        actionDto.setObject(response);
-
-        for (String id : users) {
-            if (!id.equals(message.getSenderId())) {
-                messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
-            }
+        for (String userId : participantIds) {
+            messagingTemplate.convertAndSend("/queue/notification.user." + userId, actionDto);
         }
-        messagingTemplate.convertAndSend("/queue/action.user." + message.getSenderId(), actionDto);
+        return updateMessage(messageDto);
     }
 
     @Transactional
-    public MessageDto updateMessage(MessageDto req) {
-
-        Message message = messageDao.findById(req.getId())
+    public MessageDto updateMessage(MessageDto messageDto) {
+        Message message = messageDao.findById(messageDto.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
 
         Conversation conversation = conversationDao.findById(
-                        UUID.fromString(req.getConversationId()))
+                        UUID.fromString(messageDto.getConversationId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
 
-        User sender = userDao.findById(UUID.fromString(req.getSenderId()))
+        User sender = userDao.findById(UUID.fromString(messageDto.getSenderId()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         List<User> users = conversation.getParticipants().stream().map(ConversationParticipant::getUser).toList();
@@ -132,37 +124,17 @@ public class MessageService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User is not a participant of conversation");
         }
 
-        if (req.getMessageText() != null) {
-            message.setMessageText(req.getMessageText());
+        if (messageDto.getMessageText() != null) {
+            message.setMessageText(messageDto.getMessageText());
         }
 
-        if (req.getStatus() != null) {
-            message.setStatus(req.getStatus());
+        if (messageDto.getStatus() != null) {
+            message.setStatus(messageDto.getStatus());
         }
 
         Message savedMessage = messageDao.saveAndFlush(message);
 
         return MessageDto.toDto(savedMessage);
-    }
-
-    @Cacheable(cacheNames = "mainCache", key = "#conversationId + ':' + #page + ':' + #size")
-    public Page<MessageDto> getMessagesByConversationId(UUID conversationId, Integer page , Integer size) {
-        System.out.println(page);
-
-        Pageable pageable = PageRequest.of(page, size, Sort.by("sentAt").ascending());
-        Page<Message> Messages = messageDao.findByConversationId(conversationId, pageable);
-
-        return Messages.map(MessageDto::toDto);
-    }
-
-    public int getPageCount(UUID conversationId, Integer size) {
-        return messageDao.findByConversationId(conversationId, Pageable.ofSize(size)).getTotalPages();
-    }
-
-    public List<MessageDto> getMessagesByConversationId(UUID conversationId) {
-        return messageDao.findByConversationIdOrderBySentAtAsc(conversationId)
-                .stream()
-                .map(MessageDto::toDto).toList();
     }
 
     public void deleteMessage(UUID messageId, UUID senderId) {
@@ -176,7 +148,60 @@ public class MessageService {
 
         messageDao.deleteById(messageDao.findById(UUID.fromString(messageId.toString()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                                "There is no Message with this id")).getId());
+                        "There is no Message with this id")).getId());
+    }
+
+    @Transactional
+    @CacheEvict(
+        value = "mainCache",
+        key = "#actionDto.object.conversationId + ':' + #root.target.getMessagePage(#actionDto)"
+    )
+    public void sendMessage(ActionDto<MessageDto> actionDto) {
+        MessageDto savedMessage = saveMessage(actionDto.getObject());
+
+        List<String> users = conversationService
+                .getConversation(UUID.fromString(savedMessage.getConversationId()))
+                .getUsers()
+                .stream()
+                .map(UserDto::getId)
+                .toList();
+
+        actionDto.setObject(savedMessage);
+
+        for (String id : users) {
+            if (!id.equals(savedMessage.getSenderId())) {
+                messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
+            }
+        }
+
+        messagingTemplate.convertAndSend("/queue/action.user." + savedMessage.getSenderId(), actionDto);
+    }
+
+    public int getMessagePage(ActionDto<MessageDto> actionDto) {
+        MessageDto messageToBeUpdated = objectMapper.convertValue(
+                actionDto.getObject(),
+                new TypeReference<>() {}
+        );
+
+        Integer messageIndex = messageDao.getMessageIndex(UUID.fromString(messageToBeUpdated.getConversationId()),
+                messageToBeUpdated.getId());
+
+        return (int) Math.floor(messageIndex / 20.0);
+    }
+
+    @Cacheable(cacheNames = "mainCache", key = "#conversationId + ':' + #page")
+    public Page<MessageDto> getMessagesByConversationId(UUID conversationId, Integer page , Integer size) {
+        System.out.println(page);
+        size = 20;
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by("sentAt").ascending());
+        Page<Message> Messages = messageDao.findByConversationId(conversationId, pageable);
+
+        return Messages.map(MessageDto::toDto);
+    }
+
+    public int getPageCount(UUID conversationId, Integer size) {
+        return messageDao.findByConversationId(conversationId, Pageable.ofSize(size)).getTotalPages();
     }
 
 }

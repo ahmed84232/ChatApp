@@ -44,6 +44,7 @@ public class ConversationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         List<UserDto> users = new ArrayList<>();
+        List<String> participantNames = new ArrayList<>();
         users.add(UserDto.toDto(creator));
 
         if (req.getParticipantIds().size() == 1) {
@@ -65,7 +66,6 @@ public class ConversationService {
         }
 
         Conversation conv = new Conversation();
-        conv.setName(req.getName());
 
         conv.setGroupChat(req.getParticipantIds().size() > 1);
 
@@ -87,9 +87,15 @@ public class ConversationService {
             conversationParticipantDao.saveAndFlush(participant);
 
             users.add(UserDto.toDto(u));
+            participantNames.add(u.getUsername());
         }
 
         ConversationDto response = ConversationDto.toDto(savedConversation);
+        StringBuilder names = new StringBuilder();
+        for (String name : participantNames) {
+            names.append(name).append(", ");
+        }
+        conv.setName(names.toString());
         response.setUsers(users);
 
         return response;

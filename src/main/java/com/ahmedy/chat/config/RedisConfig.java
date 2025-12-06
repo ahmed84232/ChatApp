@@ -20,7 +20,7 @@ public class RedisConfig {
                 .fromConnectionFactory(connectionFactory)
                 .withCacheConfiguration("mainCache",
                         RedisCacheConfiguration.defaultCacheConfig()
-                                .entryTtl(Duration.ofMinutes(1)) // TTL set to 10 minutes
+                                .entryTtl(Duration.ofMinutes(1))
                 )
                 .build();
     }

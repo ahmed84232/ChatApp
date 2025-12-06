@@ -12,7 +12,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @ToString
-public class ActionDto {
+public class ActionDto<T> {
 
     private String senderName;
     private UUID senderId;
@@ -23,7 +23,7 @@ public class ActionDto {
     private MessageStatus messageStatus;
     private String messageText;
     private Map<String, String> metadata;
-    private Object object;
+    private T object;
 
 
 }
