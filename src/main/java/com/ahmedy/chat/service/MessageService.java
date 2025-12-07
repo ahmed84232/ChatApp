@@ -1,6 +1,5 @@
 package com.ahmedy.chat.service;
 
-import com.ahmedy.chat.chat.MessageController;
 import com.ahmedy.chat.dao.ConversationDao;
 import com.ahmedy.chat.dao.MessageDao;
 import com.ahmedy.chat.dao.UserDao;
