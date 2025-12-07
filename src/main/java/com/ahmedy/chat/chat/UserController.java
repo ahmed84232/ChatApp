@@ -3,6 +3,7 @@ package com.ahmedy.chat.chat;
 import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.service.UserService;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -15,6 +16,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -97,6 +99,57 @@ public class UserController {
     @GetMapping("/users/{username}")
     public ResponseEntity<UserDto> getUser(@PathVariable String username) {
         return ResponseEntity.ok(userService.findUserByUsername(username));
+    }
+
+    @GetMapping()
+    public ResponseEntity<?> getUsers(@RequestParam String username) throws JsonProcessingException {
+
+        ObjectMapper mapper = new ObjectMapper();
+//        HashMap<String, String> map = mapper.readValue(body, HashMap.class);
+
+        MultiValueMap<String, Object> keycloakBody = new LinkedMultiValueMap<>();
+        keycloakBody.add("client_id", "ChatAppInternal");
+        keycloakBody.add("client_secret", "eUYaHz4vF5r1fWNnAQ3vhEkE2oMprZpO");
+        keycloakBody.add("grant_type", "client_credentials");
+
+        RestClient restClient = RestClient
+                .builder()
+                .baseUrl(keycloakHost)
+                .build();
+
+        String response = "";
+
+        try {
+            response = restClient.post()
+                    .uri("/realms/%s/protocol/openid-connect/token".formatted(keycloakRealm))
+                    .body(keycloakBody)
+                    .retrieve()
+                    .body(String.class);
+
+        } catch (HttpClientErrorException e) {
+            System.out.println(e.getResponseBodyAsString());
+
+            return ResponseEntity
+                    .status(e.getStatusCode())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(e.getResponseBodyAsString());
+
+        };
+        System.out.println(response);
+        HashMap<String, String> token = mapper.readValue(response, new TypeReference<>(){});
+        System.out.println(token.get("access_token"));
+
+        String result = restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/admin/realms/%s/users".formatted(keycloakRealm))
+                        .queryParam("username", username)
+                        .build()
+                ).header("Authorization", "Bearer " + token.get("access_token"))
+                .retrieve()
+                .body(String.class);
+
+        HashMap<String, String> user = mapper.readValue(result, new TypeReference<>(){});
+        return ResponseEntity.ok(user.get("id"));
     }
 
 }
