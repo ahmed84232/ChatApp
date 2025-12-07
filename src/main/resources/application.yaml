@@ -7,11 +7,11 @@ spring:
 
   data:
     redis:
-      host: localhost
+      host: ${REDIS_HOST}
       port: 6379
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/postgres
+    url: ${DB_URL}
     username: postgres
     password: postgres
 
@@ -21,6 +21,12 @@ spring:
     properties:
       hibernate:
         default_schema: chat_app
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KC_HOST}/realms/${KC_REALM_NAME}
 
 server:
   port: 8000

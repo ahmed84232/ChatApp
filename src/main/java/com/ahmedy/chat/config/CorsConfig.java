@@ -14,11 +14,14 @@ public class CorsConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         CorsConfiguration config = new CorsConfiguration();
 
+        config.addAllowedOriginPattern("*");
+
         // Allow credentials and specific origins
-        config.setAllowCredentials(true);
-        config.addAllowedOrigin("http://localhost:3000");
-        config.addAllowedOrigin("https://smiling-lynx-instantly.ngrok-free.app");
-        config.addAllowedHeader("ahmedahmedeg.uk");
+//        config.setAllowCredentials(true);
+//        config.addAllowedOrigin("http://localhost:3000");
+//        config.addAllowedOrigin("http://localhost:8000/*");
+//        config.addAllowedOrigin("https://smiling-lynx-instantly.ngrok-free.app");
+//        config.addAllowedOrigin("http://ahmedahmedeg.uk:3000");
 
         // Allow all headers and methods for development
         config.addAllowedHeader("*");
