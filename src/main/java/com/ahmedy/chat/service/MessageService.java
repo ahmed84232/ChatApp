@@ -1,5 +1,6 @@
 package com.ahmedy.chat.service;
 
+import com.ahmedy.chat.chat.MessageController;
 import com.ahmedy.chat.dao.ConversationDao;
 import com.ahmedy.chat.dao.MessageDao;
 import com.ahmedy.chat.dao.UserDao;
@@ -204,4 +205,35 @@ public class MessageService {
         return messageDao.findByConversationId(conversationId, Pageable.ofSize(size)).getTotalPages();
     }
 
+    @CacheEvict(
+            cacheNames = "mainCache",
+            key = "#actionDto.object.conversationId + ':' + #root.target.getMessagePage(#actionDto)",
+            beforeInvocation = true
+    )
+    public void deleteMessageRealTime(ActionDto<MessageDto> actionDto) {
+
+        MessageDto message = objectMapper.convertValue(
+                actionDto.getObject(),
+                new TypeReference<>() {}
+        );
+
+        UUID conversationId =  conversationService.getConversationIdByMessageId(message.getId());
+
+        deleteMessage(message.getId(), UUID.fromString(message.getSenderId()));
+
+        List<String> participants = conversationService
+                .getConversation(conversationId)
+                .getUsers()
+                .stream()
+                .map(UserDto::getId)
+                .filter(id -> !id.equals(message.getSenderId()))
+                .toList();
+
+        for (String id : participants) {
+
+            messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
+        }
+
+        messagingTemplate.convertAndSend("/queue/action.user." + message.getSenderId(), actionDto);
+    }
 }

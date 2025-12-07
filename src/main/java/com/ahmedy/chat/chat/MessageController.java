@@ -46,47 +46,20 @@ public class MessageController {
             messageService.updateMessage(objectMapper.convertValue(actionDto, new TypeReference<ActionDto<MessageDto>>() {}));
 
         } else if (actionDto.getAction().contains("deleteMessage")) {
-            deleteMessage(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
+            messageService.deleteMessageRealTime(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else if (actionDto.getAction().contains("typingIndicator")) {
             typingIndicator(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else if (actionDto.getAction().contains("MessageStatus")) {
 
-            messageDelivery(objectMapper.convertValue(actionDto, new TypeReference<ActionDto<List<MessageDto>>>() {}));
+            messageDelivery(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else if (actionDto.getAction().contains("deleteConversation")) {
             deleteConversation(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else throw new IllegalArgumentException("Invalid action: " + actionDto.getAction());
 
-    }
-
-    private void deleteMessage(ActionDto<MessageDto> actionDto) {
-
-        MessageDto message = objectMapper.convertValue(
-                actionDto.getObject(),
-                new TypeReference<>() {}
-        );
-
-        UUID conversationId =  conversationService.getConversationIdByMessageId(message.getId());
-
-        messageService.deleteMessage(message.getId(), UUID.fromString(message.getSenderId()));
-
-        List<String> participants = conversationService
-                .getConversation(conversationId)
-                .getUsers()
-                .stream()
-                .map(UserDto::getId)
-                .filter(id -> !id.equals(message.getSenderId()))
-                .toList();
-
-        for (String id : participants) {
-
-            messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
-        }
-
-        messagingTemplate.convertAndSend("/queue/action.user." + message.getSenderId(), actionDto);
     }
 
     private void deleteConversation(ActionDto<MessageDto> actionDto) {
@@ -152,16 +125,5 @@ public class MessageController {
             messagingTemplate.convertAndSend("/queue/notification.user." + userId, messages);
         }
     }
-
-    private void updateMessage(ActionDto<MessageDto> actionDto) {
-
-        MessageDto message = objectMapper.convertValue(
-                actionDto.getObject(),
-                new TypeReference<>() {}
-        );
-        messageService.updateMessage(message);
-
-    }
-
 
 }
