@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 
 
 @Configuration
-@EnableMethodSecurity
+@EnableMethodSecurity()
 public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {

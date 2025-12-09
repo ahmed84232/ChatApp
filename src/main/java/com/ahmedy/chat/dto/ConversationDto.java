@@ -20,6 +20,8 @@ public class ConversationDto {
     private String name;
     private List<UUID> userIds;
 
+    private Boolean isGroupChat;
+
 
     public static ConversationDto toDto(Conversation conversation) {
         ConversationDto dto = new ConversationDto();
@@ -29,6 +31,7 @@ public class ConversationDto {
         dto.userIds = conversation.getParticipants().stream()
                 .map(ConversationParticipant::getUserId)
                 .collect(Collectors.toList());
+        dto.isGroupChat = conversation.isGroupChat();
 
         return dto;
     }

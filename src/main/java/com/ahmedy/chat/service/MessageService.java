@@ -18,6 +18,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -78,6 +79,7 @@ public class MessageService {
     }
 
     @Transactional
+//    @PreAuthorize("T(com.ahmedy.chat.util.AuthUtil).isMessageOwner(#actionDto.object.id)")
     @CacheEvict(
             cacheNames = "mainCache",
             key = "#actionDto.object.conversationId + ':' + #root.target.getMessagePage(#actionDto)"
@@ -133,6 +135,7 @@ public class MessageService {
         return MessageDto.toDto(savedMessage);
     }
 
+//    @PreAuthorize("T(com.ahmedy.chat.util.AuthUtil).isMessageOwner(#messageId)")
     public void deleteMessage(UUID messageId, UUID senderId) {
         boolean belongsToUser = messageDao.findById(messageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"))
@@ -141,7 +144,6 @@ public class MessageService {
         if (!belongsToUser) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "you are not allowed to delete this message");
         }
-
         messageDao.deleteById(messageDao.findById(UUID.fromString(messageId.toString()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "There is no Message with this id")).getId());
@@ -167,7 +169,7 @@ public class MessageService {
             }
         }
 
-        messagingTemplate.convertAndSend("/queue/action.user." + savedMessage.getSenderId(), actionDto);
+        messagingTemplate.convertAndSend("/queue/notification.user." + savedMessage.getSenderId(), actionDto);
     }
 
     public int getMessagePage(ActionDto<MessageDto> actionDto) {
@@ -224,6 +226,11 @@ public class MessageService {
             messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
         }
 
-        messagingTemplate.convertAndSend("/queue/action.user." + message.getSenderId(), actionDto);
+        messagingTemplate.convertAndSend("/queue/notification.user." + message.getSenderId(), actionDto);
+    }
+
+    public Message getMessage(UUID messageId) {
+        return messageDao.findById(messageId)
+                .orElseThrow(()-> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
     }
 }

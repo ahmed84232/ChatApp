@@ -78,7 +78,7 @@ public class RealtimeController {
             }
         }
         messagingTemplate.convertAndSend(
-                "/queue/action.user." + message.getSenderId(),
+                "/queue/notification.user." + message.getSenderId(),
                 message.getConversationId());
     }
 
