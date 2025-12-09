@@ -3,13 +3,11 @@ package com.ahmedy.chat.service;
 import com.ahmedy.chat.dao.ConversationDao;
 import com.ahmedy.chat.dao.ConversationParticipantDao;
 import com.ahmedy.chat.dao.MessageDao;
-import com.ahmedy.chat.dao.UserDao;
 import com.ahmedy.chat.dto.ConversationDto;
 import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.entity.Conversation;
 import com.ahmedy.chat.entity.ConversationParticipant;
 import com.ahmedy.chat.entity.Message;
-import com.ahmedy.chat.entity.User;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,88 +17,87 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static com.ahmedy.chat.util.AuthUtil.currentUserId;
+
 @Service
 public class ConversationService {
 
     private final ConversationDao conversationDao;
     private final ConversationParticipantDao conversationParticipantDao;
-    private final UserDao userDao;
     private final MessageDao messageDao;
+    private final UserService userService;
 
     public ConversationService(
             ConversationDao conversationDao,
             ConversationParticipantDao conversationParticipantDao,
-            UserDao userDao, MessageDao messageDao) {
+            MessageDao messageDao, UserService userService) {
         this.conversationDao = conversationDao;
         this.conversationParticipantDao = conversationParticipantDao;
-        this.userDao = userDao;
         this.messageDao = messageDao;
+        this.userService = userService;
     }
 
     @Transactional
-    public ConversationDto createConversation(ConversationDto req, UUID creatorId) {
+    public ConversationDto createConversation(ConversationDto conversationDto) {
 
-        User creator = userDao.findById(creatorId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        UUID creatorId = currentUserId();
+        UserDto creator = userService.findUserById(creatorId);
 
-        List<UserDto> users = new ArrayList<>();
-        List<String> participantNames = new ArrayList<>();
-        users.add(UserDto.toDto(creator));
+        List<UUID> participantIds = new ArrayList<>();
+        participantIds.add(creatorId);
+        participantIds.addAll(conversationDto.getUserIds());
 
-        if (req.getParticipantIds().size() == 1) {
-            UUID otherUserId = UUID.fromString(req.getParticipantIds().getFirst());
-            User otherUser = userDao.findById(otherUserId)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        boolean isGroupChat = conversationDto.getUserIds().size() > 1;
 
-            List<Conversation> commonConversations = conversationParticipantDao
-                    .findAllByUserId(creatorId).stream()
+        // Private chat
+        if (!isGroupChat) {
+            UUID otherUserId = conversationDto.getUserIds().getFirst();
+
+            boolean exists = conversationParticipantDao
+                    .findAllByUserId(creatorId)
+                    .stream()
                     .map(ConversationParticipant::getConversation)
                     .filter(c -> c.getParticipants().size() == 2)
-                    .filter(c -> c.getParticipants().stream()
-                            .anyMatch(p -> p.getUser().getId().equals(otherUserId)))
-                    .toList();
+                    .anyMatch(c ->
+                            c.getParticipants().stream()
+                                    .anyMatch(p -> p.getUserId().equals(otherUserId))
+                    );
 
-            if (!commonConversations.isEmpty()) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "This conversation already exists");
+            if (exists) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT, "This conversation already exists"
+                );
             }
         }
 
-        Conversation conv = new Conversation();
+        // create Conversation
+        Conversation conversation = new Conversation();
+        conversation.setGroupChat(isGroupChat);
 
-        conv.setGroupChat(req.getParticipantIds().size() > 1);
-
-
-        Conversation savedConversation = conversationDao.save(conv);
-
-        ConversationParticipant cp = new ConversationParticipant();
-        cp.setConversation(savedConversation);
-        cp.setUser(creator);
-        conversationParticipantDao.saveAndFlush(cp);
-
-        for (String id : req.getParticipantIds()) {
-            User u = userDao.findById(UUID.fromString(id))
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-
-            ConversationParticipant participant = new ConversationParticipant();
-            participant.setConversation(savedConversation);
-            participant.setUser(u);
-            conversationParticipantDao.saveAndFlush(participant);
-
-            users.add(UserDto.toDto(u));
-            participantNames.add(u.getUsername());
+        if (!isGroupChat) {
+            UUID otherUserId = conversationDto.getUserIds().getFirst();
+            UserDto otherUser = userService.findUserById(otherUserId);
+            conversation.setName("%s, %s".formatted(
+                    creator.getUsername(),
+                    otherUser.getUsername()
+            ));
+        } else {
+            conversation.setName(conversationDto.getName());
         }
 
-        ConversationDto response = ConversationDto.toDto(savedConversation);
-        StringBuilder names = new StringBuilder();
-        for (String name : participantNames) {
-            names.append(name).append(", ");
-        }
-        conv.setName(names.toString());
-        response.setUsers(users);
+        Conversation saved = conversationDao.save(conversation);
 
-        return response;
+        // Add participants
+        for (UUID userId : participantIds) {
+            ConversationParticipant p = new ConversationParticipant();
+            p.setUserId(userId);
+            conversation.addParticipant(p);
+            conversationParticipantDao.save(p);
+        }
+
+        return ConversationDto.toDto(conversation);
+
     }
-
 
 
     @Transactional
@@ -116,25 +113,27 @@ public class ConversationService {
         Conversation conv = conversationDao.findById(conversationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
 
-        User user = userDao.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-
         if (conversationParticipantDao.existsByConversationIdAndUserId(conversationId, userId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "User already has conversation with id " + conversationId);
         }
 
+        if (!conv.isGroupChat()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This is a private conversation");
+        }
+
         ConversationParticipant cp = new ConversationParticipant();
         cp.setConversation(conv);
-        cp.setUser(user);
+        cp.setUserId(userId);
 
         conversationParticipantDao.save(cp);
     }
 
-    public List<ConversationDto> getConversations(UUID userId) {
+    public List<ConversationDto> getConversationsByUserId(UUID userId) {
 
         List<ConversationParticipant> participants = null;
         try {
             participants = conversationParticipantDao.findAllByUserId(userId);
+
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

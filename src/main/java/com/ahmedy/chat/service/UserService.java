@@ -1,70 +1,204 @@
 package com.ahmedy.chat.service;
 
-import com.ahmedy.chat.dao.UserDao;
 import com.ahmedy.chat.dto.UserDto;
-import com.ahmedy.chat.entity.User;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 @Service
 public class UserService {
 
-    private final UserDao userDao;
+    @Value("${FRONTNED_HOST}")
+    private String frontendHost;
 
-    public UserService(UserDao userDao) {
-        this.userDao = userDao;
-    }
+    @Value("${KC_HOST}")
+    private String keycloakHost;
 
-    @Transactional
+    @Value("${KC_REALM_NAME}")
+    private String keycloakRealm;
+
+    @Value("${KC_CLIENT_ID}")
+    private String clientId;
+
+    @Value("${KC_CLIENT_SECRET}")
+    private String clientSecret;
+
     public UserDto findUserById(UUID id) {
-        User user = userDao.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        UserDto response = new UserDto();
-        response.setId(user.getId().toString());
-        response.setUsername(user.getUsername());
-        response.setCreatedAt(user.getCreatedAt());
+        ObjectMapper mapper = new ObjectMapper();
 
-        return response;
-    }
+        MultiValueMap<String, Object> keycloakBody = new LinkedMultiValueMap<>();
+        keycloakBody.add("client_id", "ChatAppInternal");
+        keycloakBody.add("client_secret", "eUYaHz4vF5r1fWNnAQ3vhEkE2oMprZpO");
+        keycloakBody.add("grant_type", "client_credentials");
 
-    @Transactional
-    public UserDto findUserByUsername(String username) {
+        RestClient restClient = RestClient
+                .builder()
+                .baseUrl(keycloakHost)
+                .build();
 
-        User user = userDao.findUserByUsername(username)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        String response = "";
 
-        UserDto response = new UserDto();
-        response.setId(user.getId().toString());
-        response.setUsername(user.getUsername());
-        response.setCreatedAt(user.getCreatedAt());
+        try {
+            response = restClient.post()
+                    .uri("/realms/%s/protocol/openid-connect/token".formatted(keycloakRealm))
+                    .body(keycloakBody)
+                    .retrieve()
+                    .body(String.class);
 
-        return response;
-    }
+        } catch (HttpClientErrorException e) {
+            System.out.println(e.getResponseBodyAsString());
 
-    @Transactional
-    public UserDto addUser(UserDto req) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getResponseBodyAsString());
 
-        Optional<User> exUser = userDao.findUserByUsername(req.getUsername());
-        if (exUser.isPresent()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already exists");
+        };
+        HashMap<String, String> token = null;
+        try {
+            token = mapper.readValue(response, new TypeReference<>(){});
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
         }
 
-        User user = new User();
-        user.setUsername(req.getUsername());
-        User savedUser = userDao.saveAndFlush(user);
+        String result = restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/admin/realms/{realm}/users/{id}")
+                        .build(keycloakRealm, id.toString())
+                ).header("Authorization", "Bearer " + token.get("access_token"))
+                .retrieve()
+                .body(String.class);
 
-        UserDto response = new UserDto();
+        Map<String, Object> userMap = null;
+        try {
+            userMap = mapper.readValue(result, new TypeReference<>() {});
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
 
-        response.setId(savedUser.getId().toString());
-        response.setUsername(savedUser.getUsername());
-        response.setCreatedAt(savedUser.getCreatedAt());
+        UserDto user = new UserDto();
 
-        return response;
+        user.setId(UUID.fromString((String) userMap.get("id")));
+        user.setUsername((String) userMap.get("username"));
+
+        return user;
     }
+
+    @Transactional
+    public List<UserDto> findUserByUsername(String query) {
+
+        ObjectMapper mapper = new ObjectMapper();
+
+        MultiValueMap<String, Object> keycloakBody = new LinkedMultiValueMap<>();
+        keycloakBody.add("client_id", "ChatAppInternal");
+        keycloakBody.add("client_secret", "eUYaHz4vF5r1fWNnAQ3vhEkE2oMprZpO");
+        keycloakBody.add("grant_type", "client_credentials");
+
+        RestClient restClient = RestClient
+                .builder()
+                .baseUrl(keycloakHost)
+                .build();
+
+        String response = "";
+
+        try {
+            response = restClient.post()
+                    .uri("/realms/%s/protocol/openid-connect/token".formatted(keycloakRealm))
+                    .body(keycloakBody)
+                    .retrieve()
+                    .body(String.class);
+
+        } catch (HttpClientErrorException e) {
+            System.out.println(e.getResponseBodyAsString());
+
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getResponseBodyAsString());
+
+        };
+        HashMap<String, String> token = null;
+        try {
+            token = mapper.readValue(response, new TypeReference<>(){});
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+        String result = restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/admin/realms/%s/users".formatted(keycloakRealm))
+                        .queryParam("username", query)
+                        .build()
+                ).header("Authorization", "Bearer " + token.get("access_token"))
+                .retrieve()
+                .body(String.class);
+
+        List<Map<String, Object>> users = null;
+        try {
+            users = mapper.readValue(result, new TypeReference<>(){});
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+        return users.stream()
+                .map(x -> {
+                    UserDto user = new UserDto();
+                    user.setId(UUID.fromString((String) x.get("id")));
+                    user.setUsername((String) x.get("username"));
+                    return user;
+                })
+                .filter(u ->!u.getUsername().startsWith("service-account-"))
+                .toList();
+    }
+
+    public ResponseEntity<String> getToken(String body){
+
+        // Exchange code for access token
+        ObjectMapper mapper = new ObjectMapper();
+        HashMap<String, String> map = null;
+        try {
+            map = mapper.readValue(body, HashMap.class);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        }
+
+        MultiValueMap<String, Object> keycloakBody = new LinkedMultiValueMap<>();
+
+        keycloakBody.add("code", map.get("code"));
+        keycloakBody.add("redirect_uri", "%s/auth/callback".formatted(frontendHost));
+        keycloakBody.add("client_id", clientId);
+        keycloakBody.add("client_secret", clientSecret);
+        keycloakBody.add("grant_type", "authorization_code");
+
+
+        RestClient restClient = RestClient.builder().build();
+        String response = "";
+
+        try {
+            response = restClient.post()
+                    .uri("%s/realms/%s/protocol/openid-connect/token".formatted(keycloakHost, keycloakRealm))
+                    .body(keycloakBody)
+                    .retrieve()
+                    .body(String.class);
+
+        } catch (HttpClientErrorException e) {
+            System.out.println(e.getResponseBodyAsString());
+
+            return ResponseEntity
+                    .status(e.getStatusCode())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(e.getResponseBodyAsString());
+
+        };
+        return ResponseEntity.ok(response);
+    }
+
 }

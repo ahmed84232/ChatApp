@@ -14,16 +14,9 @@ import java.util.UUID;
 @ToString
 public class ActionDto<T> {
 
-    private String senderName;
-    private UUID senderId;
-    private UUID messageID;
-    private UUID conversationID;
     @NotNull
     private String action;
-    private MessageStatus messageStatus;
-    private String messageText;
+
     private Map<String, String> metadata;
     private T object;
-
-
 }

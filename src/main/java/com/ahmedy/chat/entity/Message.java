@@ -24,10 +24,9 @@ public class Message {
     @ToString.Exclude
     private Conversation conversation;
 
-    @ManyToOne
-    @JoinColumn(name = "sender_id")
-    @ToString.Exclude
-    private User sender;
+    private String username;
+
+    private UUID senderId;
 
     @Column(name = "message_text", nullable = false)
     private String messageText;

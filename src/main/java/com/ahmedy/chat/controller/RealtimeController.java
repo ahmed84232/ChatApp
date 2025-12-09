@@ -1,8 +1,7 @@
-package com.ahmedy.chat.chat;
+package com.ahmedy.chat.controller;
 
 import com.ahmedy.chat.dto.ActionDto;
 import com.ahmedy.chat.dto.MessageDto;
-import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.enums.MessageStatus;
 import com.ahmedy.chat.service.ConversationService;
 import com.ahmedy.chat.service.MessageService;
@@ -11,19 +10,21 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
 
 import java.util.List;
 import java.util.UUID;
 
 @Controller
-public class MessageController {
+@RequestMapping("/message")
+public class RealtimeController {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final MessageService messageService;
     private final ConversationService conversationService;
     private final ObjectMapper objectMapper;
 
-    public MessageController(
+    public RealtimeController(
             SimpMessagingTemplate messagingTemplate,
             MessageService messageService,
             ConversationService conversationService,
@@ -63,38 +64,35 @@ public class MessageController {
     }
 
     private void deleteConversation(ActionDto<MessageDto> actionDto) {
+        MessageDto message = actionDto.getObject();
 
-        List<String> participants = conversationService
-                .getConversation(actionDto.getConversationID())
-                .getUsers()
-                .stream()
-                .map(UserDto::getId)
-                .toList();
+        List<UUID> participants = conversationService
+                .getConversation(message.getConversationId())
+                .getUserIds();
 
-        conversationService.deleteConversation(actionDto.getConversationID(), actionDto.getSenderId());
+        conversationService.deleteConversation(message.getConversationId(), message.getSenderId());
 
-        for (String id : participants) {
-            if (!id.equals(actionDto.getSenderId().toString())) {
+        for (UUID id : participants) {
+            if (!id.equals(message.getSenderId())) {
                 messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
             }
         }
         messagingTemplate.convertAndSend(
-                "/queue/action.user." + actionDto.getSenderId(),
-                actionDto.getConversationID());
+                "/queue/action.user." + message.getSenderId(),
+                message.getConversationId());
     }
 
     private void typingIndicator(ActionDto<MessageDto> actionDto) {
 
-        List<String> participants = conversationService
+        List<UUID> participants = conversationService
                 .getConversation(UUID.fromString(String.valueOf(actionDto.getMetadata().get("conversationId"))))
-                .getUsers()
+                .getUserIds()
                 .stream()
-                .map(UserDto::getId)
-                .filter(id -> !id.equals(actionDto.getMetadata().get("senderId")))
+                .filter(id -> !id.equals(UUID.fromString(actionDto.getMetadata().get("senderId"))))
                 .toList();
 
 
-        for (String id : participants) {
+        for (UUID id : participants) {
             messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
         }
     }
@@ -113,15 +111,14 @@ public class MessageController {
             messageService.updateMessage(m);
         });
 
-        List<String> participantIds = conversationService
-                .getConversation(UUID.fromString(messages.getFirst().getConversationId()))
-                .getUsers()
+        List<UUID> participantIds = conversationService
+                .getConversation(messages.getFirst().getConversationId())
+                .getUserIds()
                 .stream()
-                .map(UserDto::getId)
-                .filter(id -> !id.equals(senderId.toString()))
+                .filter(id -> !id.equals(senderId))
                 .toList();
 
-        for (String userId : participantIds) {
+        for (UUID userId : participantIds) {
             messagingTemplate.convertAndSend("/queue/notification.user." + userId, messages);
         }
     }

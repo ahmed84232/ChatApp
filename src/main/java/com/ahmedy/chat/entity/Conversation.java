@@ -37,7 +37,7 @@ public class Conversation {
             cascade = CascadeType.ALL,
             orphanRemoval = true
     )
-    @ToString.Exclude
+
     private List<ConversationParticipant> participants  = new ArrayList<>();
 
     @OneToMany(
@@ -46,5 +46,10 @@ public class Conversation {
     )
     @ToString.Exclude
     private List<Message> messages  = new ArrayList<>();
+
+    public void addParticipant(ConversationParticipant participant) {
+        participants.add(participant);
+        participant.setConversation(this);
+    }
 
 }

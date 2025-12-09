@@ -2,14 +2,12 @@ package com.ahmedy.chat.service;
 
 import com.ahmedy.chat.dao.ConversationDao;
 import com.ahmedy.chat.dao.MessageDao;
-import com.ahmedy.chat.dao.UserDao;
 import com.ahmedy.chat.dto.ActionDto;
 import com.ahmedy.chat.dto.MessageDto;
 import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.entity.Conversation;
 import com.ahmedy.chat.entity.ConversationParticipant;
 import com.ahmedy.chat.entity.Message;
-import com.ahmedy.chat.entity.User;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.cache.annotation.CacheEvict;
@@ -32,50 +30,51 @@ public class MessageService {
 
     private final MessageDao messageDao;
     private final ConversationDao conversationDao;
-    private final UserDao userDao;
     private final ObjectMapper objectMapper;
     private final ConversationService conversationService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final UserService userService;
 
 
     public MessageService(
             MessageDao messageDao,
             ConversationDao conversationDao,
-            UserDao userDao,
             ObjectMapper objectMapper,
             ConversationService conversationService,
-            SimpMessagingTemplate messagingTemplate
-    ) {
+            SimpMessagingTemplate messagingTemplate,
+            UserService userService) {
         this.messageDao = messageDao;
         this.conversationDao = conversationDao;
-        this.userDao = userDao;
         this.objectMapper = objectMapper;
         this.conversationService = conversationService;
         this.messagingTemplate = messagingTemplate;
+        this.userService = userService;
     }
 
     @Transactional
     public MessageDto saveMessage(MessageDto messageDto) {
         Conversation conversation = conversationDao.
-                findById(UUID.fromString(messageDto.getConversationId()))
+                findById(messageDto.getConversationId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
 
-        User sender = userDao
-                .findById(UUID.fromString(messageDto.getSenderId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        UserDto sender = userService.findUserById(messageDto.getSenderId());
 
-        List<User> users = conversation.getParticipants().stream().map(ConversationParticipant::getUser).toList();
+        List<UUID> users = conversation.getParticipants().stream().map(ConversationParticipant::getUserId).toList();
 
-        if (!users.contains(sender)) {
+        if (!users.contains(sender.getId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User is not a participant of conversation");
         }
 
         Message message = new Message();
         message.setConversation(conversation);
-        message.setSender(sender);
+        message.setUsername(messageDto.getSenderName());
+        message.setSenderId(sender.getId());
         message.setMessageText(messageDto.getMessageText());
 
-        return MessageDto.toDto(messageDao.saveAndFlush(message));
+        MessageDto dto = MessageDto.toDto(messageDao.saveAndFlush(message));
+        dto.setSenderName(sender.getUsername());
+
+        return dto;
     }
 
     @Transactional
@@ -89,17 +88,16 @@ public class MessageService {
                 new TypeReference<>() {}
         );
 
-        messageDao.getMessageIndex(UUID.fromString(messageDto.getConversationId()), messageDto.getId());
+        messageDao.getMessageIndex(messageDto.getConversationId(), messageDto.getId());
 
-        List<String> participantIds = conversationService
-                .getConversation(UUID.fromString(messageDto.getConversationId()))
-                .getUsers()
+        List<UUID> participantIds = conversationService
+                .getConversation(messageDto.getConversationId())
+                .getUserIds()
                 .stream()
-                .map(UserDto::getId)
                 .filter(id -> !id.equals(messageDto.getSenderId()))
                 .toList();
 
-        for (String userId : participantIds) {
+        for (UUID userId : participantIds) {
             messagingTemplate.convertAndSend("/queue/notification.user." + userId, actionDto);
         }
         return updateMessage(messageDto);
@@ -110,16 +108,14 @@ public class MessageService {
         Message message = messageDao.findById(messageDto.getId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"));
 
-        Conversation conversation = conversationDao.findById(
-                        UUID.fromString(messageDto.getConversationId()))
+        Conversation conversation = conversationDao.findById(messageDto.getConversationId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
 
-        User sender = userDao.findById(UUID.fromString(messageDto.getSenderId()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        UserDto sender = userService.findUserById(messageDto.getSenderId());
 
-        List<User> users = conversation.getParticipants().stream().map(ConversationParticipant::getUser).toList();
+        List<UUID> users = conversation.getParticipants().stream().map(ConversationParticipant::getUserId).toList();
 
-        if (!users.contains(sender)) {
+        if (!users.contains(sender.getId())) {
 
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User is not a participant of conversation");
         }
@@ -140,7 +136,7 @@ public class MessageService {
     public void deleteMessage(UUID messageId, UUID senderId) {
         boolean belongsToUser = messageDao.findById(messageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"))
-                .getSender().getId().equals(senderId);
+                .getSenderId().equals(senderId);
 
         if (!belongsToUser) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "you are not allowed to delete this message");
@@ -159,16 +155,13 @@ public class MessageService {
     public void sendMessage(ActionDto<MessageDto> actionDto) {
         MessageDto savedMessage = saveMessage(actionDto.getObject());
 
-        List<String> users = conversationService
-                .getConversation(UUID.fromString(savedMessage.getConversationId()))
-                .getUsers()
-                .stream()
-                .map(UserDto::getId)
-                .toList();
+        List<UUID> users = conversationDao.findById(savedMessage.getConversationId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,"no Conversation found"))
+                .getParticipants().stream().map(ConversationParticipant::getUserId).toList();
 
         actionDto.setObject(savedMessage);
 
-        for (String id : users) {
+        for (UUID id : users) {
             if (!id.equals(savedMessage.getSenderId())) {
                 messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
             }
@@ -183,16 +176,16 @@ public class MessageService {
                 new TypeReference<>() {}
         );
 
-        Integer messageIndex = messageDao.getMessageIndex(UUID.fromString(messageToBeUpdated.getConversationId()),
+        Integer messageIndex = messageDao.getMessageIndex(messageToBeUpdated.getConversationId(),
                 messageToBeUpdated.getId());
 
         return (int) Math.floor(messageIndex / 20.0);
     }
 
     @Cacheable(cacheNames = "mainCache", key = "#conversationId + ':' + #page")
-    public Page<MessageDto> getMessagesByConversationId(UUID conversationId, Integer page , Integer size) {
+    public Page<MessageDto> getMessagesByConversationId(UUID conversationId, Integer page) {
         System.out.println(page);
-        size = 20;
+        int size = 20;
 
         Pageable pageable = PageRequest.of(page, size, Sort.by("sentAt").ascending());
         Page<Message> Messages = messageDao.findByConversationId(conversationId, pageable);
@@ -218,18 +211,16 @@ public class MessageService {
 
         UUID conversationId =  conversationService.getConversationIdByMessageId(message.getId());
 
-        deleteMessage(message.getId(), UUID.fromString(message.getSenderId()));
+        deleteMessage(message.getId(), message.getSenderId());
 
-        List<String> participants = conversationService
+        List<UUID> users = conversationService
                 .getConversation(conversationId)
-                .getUsers()
+                .getUserIds()
                 .stream()
-                .map(UserDto::getId)
                 .filter(id -> !id.equals(message.getSenderId()))
                 .toList();
 
-        for (String id : participants) {
-
+        for (UUID id : users) {
             messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
         }
 

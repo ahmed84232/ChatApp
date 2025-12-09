@@ -11,8 +11,8 @@ import java.util.UUID;
 @Entity
 @Data
 @Table(
-        name = "conversation_participants",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"conversation_id", "user_id"})
+    name = "conversation_participants",
+    uniqueConstraints = @UniqueConstraint(columnNames = {"conversation_id", "user_id"})
 )
 public class ConversationParticipant {
 
@@ -25,10 +25,7 @@ public class ConversationParticipant {
     @ToString.Exclude
     private Conversation conversation;
 
-    @ManyToOne
-    @JoinColumn(name = "user_id")
-    @ToString.Exclude
-    private User user;
+    private UUID userId;
 
     @CreationTimestamp
     private LocalDateTime joinedAt;
