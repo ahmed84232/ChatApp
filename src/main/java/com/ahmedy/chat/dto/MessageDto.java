@@ -20,14 +20,14 @@ public class MessageDto implements Serializable {
     private String messageText;
 
     private MessageStatus status;
-    private LocalDateTime sentAt;
+    private String sentAt;
 
     public static MessageDto toDto(Message message) {
         MessageDto messageDto = new MessageDto();
 
         messageDto.setId(message.getId());
         messageDto.setMessageText(message.getMessageText());
-        messageDto.setSentAt(message.getSentAt());
+        messageDto.setSentAt(message.getSentAt().toString());
         messageDto.setConversationId(message.getConversation().getId());
         messageDto.setSenderName(message.getUsername());
         messageDto.setSenderId(message.getSenderId());

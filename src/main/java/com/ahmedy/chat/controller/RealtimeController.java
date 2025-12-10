@@ -5,6 +5,7 @@ import com.ahmedy.chat.dto.MessageDto;
 import com.ahmedy.chat.enums.MessageStatus;
 import com.ahmedy.chat.service.ConversationService;
 import com.ahmedy.chat.service.MessageService;
+import com.ahmedy.chat.service.RabbitMQProducer;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -23,17 +24,19 @@ public class RealtimeController {
     private final MessageService messageService;
     private final ConversationService conversationService;
     private final ObjectMapper objectMapper;
+    private final RabbitMQProducer rabbitProducer;
 
     public RealtimeController(
             SimpMessagingTemplate messagingTemplate,
             MessageService messageService,
             ConversationService conversationService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper, RabbitMQProducer rabbitProducer
     ) {
         this.messagingTemplate = messagingTemplate;
         this.messageService = messageService;
         this.conversationService = conversationService;
         this.objectMapper = objectMapper;
+        this.rabbitProducer = rabbitProducer;
     }
 
     @MessageMapping("/action")
@@ -73,13 +76,9 @@ public class RealtimeController {
         conversationService.deleteConversation(message.getConversationId(), message.getSenderId());
 
         for (UUID id : participants) {
-            if (!id.equals(message.getSenderId())) {
-                messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
-            }
+            rabbitProducer.sendAction(actionDto, id);
         }
-        messagingTemplate.convertAndSend(
-                "/queue/notification.user." + message.getSenderId(),
-                message.getConversationId());
+
     }
 
     private void typingIndicator(ActionDto<MessageDto> actionDto) {
@@ -93,7 +92,7 @@ public class RealtimeController {
 
 
         for (UUID id : participants) {
-            messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
+            rabbitProducer.sendAction(actionDto, id);
         }
     }
 
@@ -102,9 +101,7 @@ public class RealtimeController {
         UUID senderId = UUID.fromString(actionDto.getMetadata().get("senderId"));
         MessageStatus status = MessageStatus.valueOf(actionDto.getMetadata().get("messageStatus"));
 
-        List<MessageDto> messages = objectMapper.convertValue(
-                actionDto.getObject(),
-                new TypeReference<>() {});
+        List<MessageDto> messages = actionDto.getObject();
 
         messages.forEach(m -> {
             m.setStatus(status);
@@ -119,7 +116,7 @@ public class RealtimeController {
                 .toList();
 
         for (UUID userId : participantIds) {
-            messagingTemplate.convertAndSend("/queue/notification.user." + userId, messages);
+            rabbitProducer.sendAction(messages, userId);
         }
     }
 

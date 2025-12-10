@@ -35,6 +35,7 @@ public class MessageService {
     private final ConversationService conversationService;
     private final SimpMessagingTemplate messagingTemplate;
     private final UserService userService;
+    private final RabbitMQProducer rabbitMQProducer;
 
 
     public MessageService(
@@ -43,13 +44,14 @@ public class MessageService {
             ObjectMapper objectMapper,
             ConversationService conversationService,
             SimpMessagingTemplate messagingTemplate,
-            UserService userService) {
+            UserService userService, RabbitMQProducer rabbitMQProducer) {
         this.messageDao = messageDao;
         this.conversationDao = conversationDao;
         this.objectMapper = objectMapper;
         this.conversationService = conversationService;
         this.messagingTemplate = messagingTemplate;
         this.userService = userService;
+        this.rabbitMQProducer = rabbitMQProducer;
     }
 
     @Transactional
@@ -79,7 +81,6 @@ public class MessageService {
     }
 
     @Transactional
-//    @PreAuthorize("T(com.ahmedy.chat.util.AuthUtil).isMessageOwner(#actionDto.object.id)")
     @CacheEvict(
             cacheNames = "mainCache",
             key = "#actionDto.object.conversationId + ':' + #root.target.getMessagePage(#actionDto)"
@@ -100,7 +101,7 @@ public class MessageService {
                 .toList();
 
         for (UUID userId : participantIds) {
-            messagingTemplate.convertAndSend("/queue/notification.user." + userId, actionDto);
+            rabbitMQProducer.sendAction(actionDto,userId);
         }
         return updateMessage(messageDto);
     }
@@ -135,7 +136,6 @@ public class MessageService {
         return MessageDto.toDto(savedMessage);
     }
 
-//    @PreAuthorize("T(com.ahmedy.chat.util.AuthUtil).isMessageOwner(#messageId)")
     public void deleteMessage(UUID messageId, UUID senderId) {
         boolean belongsToUser = messageDao.findById(messageId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Message not found"))
@@ -164,12 +164,8 @@ public class MessageService {
         actionDto.setObject(savedMessage);
 
         for (UUID id : users) {
-            if (!id.equals(savedMessage.getSenderId())) {
-                messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
-            }
+            rabbitMQProducer.sendAction(actionDto, id);
         }
-
-        messagingTemplate.convertAndSend("/queue/notification.user." + savedMessage.getSenderId(), actionDto);
     }
 
     public int getMessagePage(ActionDto<MessageDto> actionDto) {
@@ -217,16 +213,11 @@ public class MessageService {
 
         List<UUID> users = conversationService
                 .getConversation(conversationId)
-                .getUserIds()
-                .stream()
-                .filter(id -> !id.equals(message.getSenderId()))
-                .toList();
+                .getUserIds();
 
         for (UUID id : users) {
-            messagingTemplate.convertAndSend("/queue/notification.user." + id, actionDto);
+            rabbitMQProducer.sendAction(actionDto, id);
         }
-
-        messagingTemplate.convertAndSend("/queue/notification.user." + message.getSenderId(), actionDto);
     }
 
     public Message getMessage(UUID messageId) {
