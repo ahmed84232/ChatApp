@@ -17,8 +17,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -33,7 +31,6 @@ public class MessageService {
     private final ConversationDao conversationDao;
     private final ObjectMapper objectMapper;
     private final ConversationService conversationService;
-    private final SimpMessagingTemplate messagingTemplate;
     private final UserService userService;
     private final RabbitMQProducer rabbitMQProducer;
 
@@ -43,13 +40,11 @@ public class MessageService {
             ConversationDao conversationDao,
             ObjectMapper objectMapper,
             ConversationService conversationService,
-            SimpMessagingTemplate messagingTemplate,
             UserService userService, RabbitMQProducer rabbitMQProducer) {
         this.messageDao = messageDao;
         this.conversationDao = conversationDao;
         this.objectMapper = objectMapper;
         this.conversationService = conversationService;
-        this.messagingTemplate = messagingTemplate;
         this.userService = userService;
         this.rabbitMQProducer = rabbitMQProducer;
     }

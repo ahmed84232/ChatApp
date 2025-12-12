@@ -85,7 +85,7 @@ public class ConversationService {
             conversation.setName(conversationDto.getName());
         }
 
-        Conversation saved = conversationDao.save(conversation);
+        conversationDao.save(conversation);
 
         // Add participants
         for (UUID userId : participantIds) {
@@ -130,7 +130,7 @@ public class ConversationService {
 
     public List<ConversationDto> getConversationsByUserId(UUID userId) {
 
-        List<ConversationParticipant> participants = null;
+        List<ConversationParticipant> participants;
         try {
             participants = conversationParticipantDao.findAllByUserId(userId);
 

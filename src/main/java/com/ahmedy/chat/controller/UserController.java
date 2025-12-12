@@ -2,12 +2,10 @@ package com.ahmedy.chat.controller;
 
 import com.ahmedy.chat.dto.UserDto;
 import com.ahmedy.chat.service.UserService;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/user")

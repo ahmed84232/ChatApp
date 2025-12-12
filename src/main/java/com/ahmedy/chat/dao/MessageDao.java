@@ -7,14 +7,13 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.util.List;
 import java.util.UUID;
 
 public interface MessageDao extends JpaRepository<Message, UUID> {
 
     Page<Message> findByConversationId(UUID conversationId, Pageable pageable);
 
-    List<Message> findByConversationIdOrderBySentAtAsc(UUID conversationId);
+//    List<Message> findByConversationIdOrderBySentAtAsc(UUID conversationId);
 
     @Query(value = """
     SELECT rn - 1

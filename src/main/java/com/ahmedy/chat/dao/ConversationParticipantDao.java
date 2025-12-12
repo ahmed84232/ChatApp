@@ -1,6 +1,5 @@
 package com.ahmedy.chat.dao;
 
-import com.ahmedy.chat.entity.Conversation;
 import com.ahmedy.chat.entity.ConversationParticipant;
 import org.springframework.data.jpa.repository.JpaRepository;
 

@@ -9,7 +9,6 @@ import com.ahmedy.chat.service.RabbitMQProducer;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 
@@ -20,19 +19,16 @@ import java.util.UUID;
 @RequestMapping("/message")
 public class RealtimeController {
 
-    private final SimpMessagingTemplate messagingTemplate;
     private final MessageService messageService;
     private final ConversationService conversationService;
     private final ObjectMapper objectMapper;
     private final RabbitMQProducer rabbitProducer;
 
     public RealtimeController(
-            SimpMessagingTemplate messagingTemplate,
             MessageService messageService,
             ConversationService conversationService,
             ObjectMapper objectMapper, RabbitMQProducer rabbitProducer
     ) {
-        this.messagingTemplate = messagingTemplate;
         this.messageService = messageService;
         this.conversationService = conversationService;
         this.objectMapper = objectMapper;

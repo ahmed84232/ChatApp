@@ -1,18 +1,12 @@
 package com.ahmedy.chat.service;
 
 import com.ahmedy.chat.config.RabbitMQConfig;
-import com.ahmedy.chat.dto.ActionDto;
-import com.ahmedy.chat.dto.MessageDto;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 
 import org.springframework.messaging.Message;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
-
-import java.util.List;
-import java.util.UUID;
 
 @Component
 public class RabbitMQConsumer {

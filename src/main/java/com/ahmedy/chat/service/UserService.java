@@ -21,7 +21,7 @@ import java.util.*;
 @Service
 public class UserService {
 
-    @Value("${FRONTNED_HOST}")
+    @Value("${FRONTEND_HOST}")
     private String frontendHost;
 
     @Value("${KC_HOST}")
@@ -36,21 +36,30 @@ public class UserService {
     @Value("${KC_CLIENT_SECRET}")
     private String clientSecret;
 
+    @Value("${KC_INTERNAL_CLIENT_ID}")
+    private String internalClientId;
+
+    @Value("${KC_INTERNAL_CLIENT_SECRET}")
+    private String internalClientSecret;
+
+
     public UserDto findUserById(UUID id) {
 
         ObjectMapper mapper = new ObjectMapper();
 
         MultiValueMap<String, Object> keycloakBody = new LinkedMultiValueMap<>();
-        keycloakBody.add("client_id", "ChatAppInternal");
-        keycloakBody.add("client_secret", "eUYaHz4vF5r1fWNnAQ3vhEkE2oMprZpO");
+        keycloakBody.add("client_id", internalClientId);
+        keycloakBody.add("client_secret", internalClientSecret);
         keycloakBody.add("grant_type", "client_credentials");
+
+        System.out.println("keycloakBody: " + keycloakBody);
 
         RestClient restClient = RestClient
                 .builder()
                 .baseUrl(keycloakHost)
                 .build();
 
-        String response = "";
+        String response;
 
         try {
             response = restClient.post()
@@ -64,8 +73,8 @@ public class UserService {
 
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getResponseBodyAsString());
 
-        };
-        HashMap<String, String> token = null;
+        }
+        HashMap<String, String> token;
         try {
             token = mapper.readValue(response, new TypeReference<>(){});
         } catch (JsonProcessingException e) {
@@ -80,7 +89,7 @@ public class UserService {
                 .retrieve()
                 .body(String.class);
 
-        Map<String, Object> userMap = null;
+        Map<String, Object> userMap;
         try {
             userMap = mapper.readValue(result, new TypeReference<>() {});
         } catch (JsonProcessingException e) {
@@ -101,8 +110,8 @@ public class UserService {
         ObjectMapper mapper = new ObjectMapper();
 
         MultiValueMap<String, Object> keycloakBody = new LinkedMultiValueMap<>();
-        keycloakBody.add("client_id", "ChatAppInternal");
-        keycloakBody.add("client_secret", "eUYaHz4vF5r1fWNnAQ3vhEkE2oMprZpO");
+        keycloakBody.add("client_id", internalClientId);
+        keycloakBody.add("client_secret", internalClientSecret);
         keycloakBody.add("grant_type", "client_credentials");
 
         RestClient restClient = RestClient
@@ -110,7 +119,7 @@ public class UserService {
                 .baseUrl(keycloakHost)
                 .build();
 
-        String response = "";
+        String response;
 
         try {
             response = restClient.post()
@@ -124,8 +133,8 @@ public class UserService {
 
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getResponseBodyAsString());
 
-        };
-        HashMap<String, String> token = null;
+        }
+        HashMap<String, String> token;
         try {
             token = mapper.readValue(response, new TypeReference<>(){});
         } catch (JsonProcessingException e) {
@@ -141,7 +150,7 @@ public class UserService {
                 .retrieve()
                 .body(String.class);
 
-        List<Map<String, Object>> users = null;
+        List<Map<String, Object>> users;
         try {
             users = mapper.readValue(result, new TypeReference<>(){});
         } catch (JsonProcessingException e) {
@@ -163,7 +172,7 @@ public class UserService {
 
         // Exchange code for access token
         ObjectMapper mapper = new ObjectMapper();
-        HashMap<String, String> map = null;
+        HashMap<String, String> map;
         try {
             map = mapper.readValue(body, HashMap.class);
         } catch (JsonProcessingException e) {
@@ -180,7 +189,7 @@ public class UserService {
 
 
         RestClient restClient = RestClient.builder().build();
-        String response = "";
+        String response;
 
         try {
             response = restClient.post()
@@ -197,7 +206,7 @@ public class UserService {
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(e.getResponseBodyAsString());
 
-        };
+        }
         return ResponseEntity.ok(response);
     }
 

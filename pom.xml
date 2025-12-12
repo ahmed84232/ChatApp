@@ -10,7 +10,7 @@
 	</parent>
 	<groupId>com.ahmedy</groupId>
 	<artifactId>chat</artifactId>
-	<version>0.0.1-SNAPSHOT</version>
+	<version>1.0.0</version>
 	<name>chat</name>
 	<description>Demo project for Spring Boot chat application</description>
 	<url/>
