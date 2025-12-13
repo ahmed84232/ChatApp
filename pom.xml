@@ -9,7 +9,7 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.ahmedy</groupId>
-	<artifactId>chat</artifactId>
+	<artifactId>chatapp-backend</artifactId>
 	<version>1.0.0</version>
 	<name>chat</name>
 	<description>Demo project for Spring Boot chat application</description>

@@ -69,11 +69,9 @@ public class UserService {
                     .body(String.class);
 
         } catch (HttpClientErrorException e) {
-            System.out.println(e.getResponseBodyAsString());
-
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getResponseBodyAsString());
-
         }
+
         HashMap<String, String> token;
         try {
             token = mapper.readValue(response, new TypeReference<>(){});
@@ -129,11 +127,9 @@ public class UserService {
                     .body(String.class);
 
         } catch (HttpClientErrorException e) {
-            System.out.println(e.getResponseBodyAsString());
-
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, e.getResponseBodyAsString());
-
         }
+
         HashMap<String, String> token;
         try {
             token = mapper.readValue(response, new TypeReference<>(){});
@@ -187,7 +183,6 @@ public class UserService {
         keycloakBody.add("client_secret", clientSecret);
         keycloakBody.add("grant_type", "authorization_code");
 
-
         RestClient restClient = RestClient.builder().build();
         String response;
 
@@ -199,8 +194,6 @@ public class UserService {
                     .body(String.class);
 
         } catch (HttpClientErrorException e) {
-            System.out.println(e.getResponseBodyAsString());
-
             return ResponseEntity
                     .status(e.getStatusCode())
                     .contentType(MediaType.APPLICATION_JSON)
