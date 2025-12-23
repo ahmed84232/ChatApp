@@ -1,11 +1,9 @@
-package com.ahmedyasser.service;
+package com.ahmedyasser.client;
 
 import com.ahmedyasser.dto.ActionDto;
-import com.ahmedyasser.dto.MessageDto;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -17,7 +15,7 @@ public class RabbitMQProducer {
         this.rabbitTemplate = rabbitTemplate;
     }
 
-    public void sendAction(Object message, UUID userId) {
+    public void sendAction(ActionDto<?> message, UUID userId) {
         rabbitTemplate.convertAndSend("exchage.main", "notification.user." + userId, message);
     }
 

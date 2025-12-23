@@ -22,6 +22,8 @@ public class ConversationDto {
 
     private Boolean isGroupChat;
 
+    private UUID owner;
+
 
     public static ConversationDto toDto(Conversation conversation) {
         ConversationDto dto = new ConversationDto();
@@ -32,6 +34,7 @@ public class ConversationDto {
                 .map(ConversationParticipant::getUserId)
                 .collect(Collectors.toList());
         dto.isGroupChat = conversation.isGroupChat();
+        dto.owner = conversation.getOwner();
 
         return dto;
     }

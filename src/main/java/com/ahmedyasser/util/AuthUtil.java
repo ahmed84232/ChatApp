@@ -1,9 +1,8 @@
 package com.ahmedyasser.util;
 
+import com.ahmedyasser.dao.ConversationDao;
 import com.ahmedyasser.dto.ConversationDto;
 import com.ahmedyasser.dto.UserDto;
-import com.ahmedyasser.entity.Conversation;
-import com.ahmedyasser.entity.ConversationParticipant;
 import com.ahmedyasser.service.ConversationService;
 import com.ahmedyasser.service.MessageService;
 import org.springframework.http.HttpStatus;
@@ -22,10 +21,12 @@ public class AuthUtil {
 
     private final MessageService messageService;
     private final ConversationService conversationService;
+    private final ConversationDao conversationDao;
 
-    public AuthUtil(MessageService messageService, ConversationService conversationService) {
+    public AuthUtil(MessageService messageService, ConversationService conversationService, ConversationDao conversationDao) {
         this.messageService = messageService;
         this.conversationService = conversationService;
+        this.conversationDao = conversationDao;
     }
 
     public static UUID currentUserId() {
@@ -54,7 +55,7 @@ public class AuthUtil {
     }
 
     @Transactional
-    public Boolean isConversationMember(UUID conversationId) {
+    public Boolean isConversationParticipant(UUID conversationId) {
         List<UUID> conversationIds = conversationService
                 .getConversationsByUserId(currentUserId())
                 .stream()
@@ -62,6 +63,21 @@ public class AuthUtil {
                 .toList();
 
         return conversationIds.contains(conversationId);
+    }
+
+    @Transactional
+    public Boolean isPrivateConversationOrIsConversationOwner(UUID conversationId) {
+        return conversationDao.isPrivateConversationOrIsConversationOwner(conversationId, currentUserId());
+    }
+
+    @Transactional
+    public Boolean validateUserId(UUID userId) {
+        return userId.equals(currentUserId());
+    }
+
+    @Transactional
+    public Boolean isConversationParticipantAndUserValidated(UUID conversationId, UUID userId) {
+        return validateUserId(userId) && isConversationParticipant(conversationId);
     }
 
     @Transactional
@@ -73,7 +89,7 @@ public class AuthUtil {
     }
 
     @Transactional
-    public Boolean isMessageOwnerAndConversationMember(UUID messageId, UUID conversationId) {
-        return isMessageOwner(messageId) && isConversationMember(conversationId);
+    public Boolean isMessageOwnerAndConversationParticipant(UUID messageId, UUID conversationId) {
+        return isMessageOwner(messageId) && isConversationParticipant(conversationId);
     }
 }

@@ -84,6 +84,7 @@ public class ConversationService {
             ));
         } else {
             conversation.setName(conversationDto.getName());
+            conversation.setOwner(creatorId);
         }
 
         conversationDao.save(conversation);
@@ -106,27 +107,6 @@ public class ConversationService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
 
         return ConversationDto.toDto(conversation);
-    }
-
-    @Transactional
-    @PreAuthorize("@AuthUtil.isConversationMember(#conversationId)")
-    public void addParticipant(UUID conversationId, UUID userId) {
-        Conversation conv = conversationDao.findById(conversationId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
-
-        if (conversationParticipantDao.existsByConversationIdAndUserId(conversationId, userId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "User already has conversation with id " + conversationId);
-        }
-
-        if (!conv.isGroupChat()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This is a private conversation");
-        }
-
-        ConversationParticipant cp = new ConversationParticipant();
-        cp.setConversation(conv);
-        cp.setUserId(userId);
-
-        conversationParticipantDao.save(cp);
     }
 
     public List<ConversationDto> getConversationsByUserId(UUID userId) {
@@ -155,6 +135,10 @@ public class ConversationService {
         return message.getConversation().getId();
     }
 
+    @PreAuthorize(
+        "(@AuthUtil.isConversationParticipant(#conversationId) && @AuthUtil.isPrivateConversationOrIsConversationOwner(#conversationId))" +
+        "|| @AuthUtil.validateUserId(#userId)"
+    )
     public void deleteConversation(UUID conversationId, UUID userId) {
 
         if (!conversationParticipantDao.existsByConversationIdAndUserId(conversationId, userId)) {

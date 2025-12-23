@@ -1,5 +1,6 @@
 package com.ahmedyasser.service;
 
+import com.ahmedyasser.client.RabbitMQProducer;
 import com.ahmedyasser.dao.ConversationDao;
 import com.ahmedyasser.dao.MessageDao;
 import com.ahmedyasser.dto.ActionDto;
@@ -57,7 +58,7 @@ public class MessageService {
         value = "mainCache",
         key = "#actionDto.object.conversationId + ':' + #root.target.getMessagePage(#actionDto.getObject())"
     )
-    @PreAuthorize("@AuthUtil.isConversationMember(#actionDto.getObject().getConversationId())")
+    @PreAuthorize("@AuthUtil.isConversationParticipant(#actionDto.getObject().getConversationId())")
     public void sendMessageRealtime(ActionDto<MessageDto> actionDto) {
         MessageDto messageToBeSaved = actionDto.getObject();
 
@@ -113,7 +114,7 @@ public class MessageService {
         cacheNames = "mainCache",
         key = "#actionDto.object.conversationId + ':' + #root.target.getMessagePage(#actionDto.getObject())"
     )
-    @PreAuthorize("@AuthUtil.isMessageOwnerAndConversationMember(#actionDto.getObject().getId(), #actionDto.getObject().getConversationId())")
+    @PreAuthorize("@AuthUtil.isMessageOwnerAndConversationParticipant(#actionDto.getObject().getId(), #actionDto.getObject().getConversationId())")
     public MessageDto updateMessageRealtime(ActionDto<MessageDto> actionDto) {
         MessageDto messageDto = objectMapper.convertValue(
                 actionDto.getObject(),
@@ -158,6 +159,7 @@ public class MessageService {
         beforeInvocation = true
     )
     @PreAuthorize("@AuthUtil.isMessageOwner(#actionDto.getObject().getId())")
+    @Transactional
     public void deleteMessageRealTime(ActionDto<MessageDto> actionDto) {
 
         MessageDto message = objectMapper.convertValue(
@@ -167,7 +169,7 @@ public class MessageService {
 
         UUID conversationId =  conversationService.getConversationIdByMessageId(message.getId());
 
-        deleteMessageDb(message.getId());
+        messageDao.deleteById(message.getId());
 
         List<UUID> users = conversationService
                 .getConversationById(conversationId)
@@ -178,11 +180,6 @@ public class MessageService {
         }
     }
 
-    @Transactional
-    public void deleteMessageDb(UUID messageId) {
-        messageDao.deleteById(messageId);
-    }
-    
     @Transactional
     public List<MessageDto> bulkUpdateMessageStatus(List<UUID> messageIds, MessageStatus status) {
         messageDao.updateStatusByIds(messageIds, status);

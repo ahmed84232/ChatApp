@@ -5,7 +5,8 @@ import com.ahmedyasser.dto.MessageDto;
 import com.ahmedyasser.enums.MessageStatus;
 import com.ahmedyasser.service.ConversationService;
 import com.ahmedyasser.service.MessageService;
-import com.ahmedyasser.service.RabbitMQProducer;
+import com.ahmedyasser.client.RabbitMQProducer;
+import com.ahmedyasser.service.ParticipantService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.cache.Cache;
@@ -26,17 +27,22 @@ public class RealtimeController {
 
     private final MessageService messageService;
     private final ConversationService conversationService;
+    private final ParticipantService participantService;
     private final ObjectMapper objectMapper;
     private final RabbitMQProducer rabbitProducer;
     private final CacheManager cacheManager;
 
     public RealtimeController(
-            MessageService messageService,
-            ConversationService conversationService,
-            ObjectMapper objectMapper, RabbitMQProducer rabbitProducer, CacheManager cacheManager
+        MessageService messageService,
+        ConversationService conversationService,
+        ParticipantService participantService,
+        ObjectMapper objectMapper,
+        RabbitMQProducer rabbitProducer,
+        CacheManager cacheManager
     ) {
         this.messageService = messageService;
         this.conversationService = conversationService;
+        this.participantService = participantService;
         this.objectMapper = objectMapper;
         this.rabbitProducer = rabbitProducer;
         this.cacheManager = cacheManager;
@@ -51,31 +57,59 @@ public class RealtimeController {
             messageService.sendMessageRealtime(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else if (actionDto.getAction().contains("updateMessage")) {
-            messageService.updateMessageRealtime(objectMapper.convertValue(actionDto, new TypeReference<ActionDto<MessageDto>>() {}));
+            messageService.updateMessageRealtime(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else if (actionDto.getAction().contains("deleteMessage")) {
             messageService.deleteMessageRealTime(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else if (actionDto.getAction().contains("typingIndicator")) {
-            typingIndicator(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
+            typingIndicatorHandler(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else if (actionDto.getAction().contains("MessageStatus")) {
             System.out.printf("\n[Realtime Controller] | Message Status Action:- \n%s\n\n",  actionDto);
-            messageDelivery(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
+            messageStatusHandler(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
         } else if (actionDto.getAction().contains("deleteConversation")) {
-            deleteConversation(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
+            deleteConversationRealtime(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
 
+        } else if (actionDto.getAction().contains("deleteParticipant")) {
+            deleteParticipantRealtime(objectMapper.convertValue(actionDto, new TypeReference<>() {
+            }));
+        } else if (actionDto.getAction().contains("addParticipant")) {
+            addParticipantRealtime(objectMapper.convertValue(actionDto, new TypeReference<>() {}));
         } else throw new IllegalArgumentException("Invalid action: " + actionDto.getAction());
 
     }
 
-    private void deleteConversation(ActionDto<MessageDto> actionDto) {
+    private void addParticipantRealtime(ActionDto<?> actionDto) {
+        UUID userToBeAddedId = UUID.fromString(actionDto.getMetadata().get("userId"));
+
+        participantService.addParticipant(
+            UUID.fromString(actionDto.getMetadata().get("conversationId")),
+            userToBeAddedId
+        );
+
+        rabbitProducer.sendAction(actionDto, userToBeAddedId);
+    }
+
+
+    private void deleteParticipantRealtime(ActionDto<?> actionDto) {
+        UUID userToBeRemovedId = UUID.fromString(actionDto.getMetadata().get("userId"));
+
+        participantService.deleteParticipant(
+            UUID.fromString(actionDto.getMetadata().get("conversationId")),
+            userToBeRemovedId
+        );
+
+        rabbitProducer.sendAction(actionDto, userToBeRemovedId);
+    }
+
+    private void deleteConversationRealtime(ActionDto<MessageDto> actionDto) {
         MessageDto message = actionDto.getObject();
 
         List<UUID> participants = conversationService
-                .getConversationById(message.getConversationId())
-                .getUserIds();
+            .getConversationById(message.getConversationId())
+            .getUserIds();
 
         conversationService.deleteConversation(message.getConversationId(), message.getSenderId());
 
@@ -85,22 +119,21 @@ public class RealtimeController {
 
     }
 
-    private void typingIndicator(ActionDto<MessageDto> actionDto) {
+    private void typingIndicatorHandler(ActionDto<MessageDto> actionDto) {
 
         List<UUID> participants = conversationService
-                .getConversationById(UUID.fromString(String.valueOf(actionDto.getMetadata().get("conversationId"))))
-                .getUserIds()
-                .stream()
-                .filter(id -> !id.equals(UUID.fromString(actionDto.getMetadata().get("senderId"))))
-                .toList();
-
+            .getConversationById(UUID.fromString(String.valueOf(actionDto.getMetadata().get("conversationId"))))
+            .getUserIds()
+            .stream()
+            .filter(id -> !id.equals(UUID.fromString(actionDto.getMetadata().get("senderId"))))
+            .toList();
 
         for (UUID id : participants) {
             rabbitProducer.sendAction(actionDto, id);
         }
     }
 
-    private void messageDelivery(ActionDto<List<UUID>> actionDto) {
+    private void messageStatusHandler(ActionDto<List<UUID>> actionDto) {
         UUID senderId = UUID.fromString(actionDto.getMetadata().get("senderId"));
         MessageStatus status = MessageStatus.valueOf(actionDto.getMetadata().get("messageStatus"));
 
@@ -111,8 +144,8 @@ public class RealtimeController {
 //        conversationService.markConversationAsRead(conversationId, senderId);
 
         List<Integer> pages = new ArrayList<>(List.of(
-                messageService.getMessagePage(oldestNewestMessages.getFirst()),
-                messageService.getMessagePage(oldestNewestMessages.getLast())
+            messageService.getMessagePage(oldestNewestMessages.getFirst()),
+            messageService.getMessagePage(oldestNewestMessages.getLast())
         ));
 
         Cache cache = cacheManager.getCache("mainCache");
@@ -123,11 +156,11 @@ public class RealtimeController {
         }
 
         List<UUID> participantIds = conversationService
-                .getConversationById(conversationId)
-                .getUserIds()
-                .stream()
-                .filter(id -> !id.equals(senderId))
-                .toList();
+            .getConversationById(conversationId)
+            .getUserIds()
+            .stream()
+            .filter(id -> !id.equals(senderId))
+            .toList();
 
         for (UUID userId : participantIds) {
             rabbitProducer.sendAction(actionDto, userId);
